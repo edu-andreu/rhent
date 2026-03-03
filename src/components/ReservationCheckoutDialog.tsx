@@ -8,7 +8,6 @@ import { useReservationCheckout } from "./reservation-checkout/hooks/useReservat
 import { ReservationCheckoutCustomerInfo } from "./reservation-checkout/ReservationCheckoutCustomerInfo";
 import { ReservationCheckoutCreditBanner } from "./reservation-checkout/ReservationCheckoutCreditBanner";
 import { ReservationCheckoutItemDetails } from "./reservation-checkout/ReservationCheckoutItemDetails";
-import { ReservationCheckoutExtraDaysSection } from "./reservation-checkout/ReservationCheckoutExtraDaysSection";
 import { ReservationCheckoutDiscountSection } from "./reservation-checkout/ReservationCheckoutDiscountSection";
 import { ReservationCheckoutSurplusSection } from "./reservation-checkout/ReservationCheckoutSurplusSection";
 import { ReservationCheckoutPaymentSection } from "./reservation-checkout/ReservationCheckoutPaymentSection";
@@ -74,7 +73,35 @@ export function ReservationCheckoutDialog({
 
               <Separator />
 
-              <ReservationCheckoutItemDetails item={details.item} formatCurrency={formatCurrency} />
+              <ReservationCheckoutItemDetails
+                item={details.item}
+                formatCurrency={formatCurrency}
+                showExtraDaysSection={hook.showExtraDaysSection}
+                applicableExtraDays={hook.applicableExtraDays}
+                extraDaysAmount={hook.extraDaysAmount}
+                extraDaysCount={hook.extraDaysCount}
+                extraDayRate={hook.extraDayRate}
+                originalExtraDaysCount={hook.originalExtraDaysCount}
+                tempExtraDaysValue={hook.tempExtraDaysValue}
+                onShowExtraDaysSection={() => {
+                  hook.setTempExtraDaysValue("");
+                  hook.setShowExtraDaysSection(true);
+                }}
+                onTempExtraDaysValueChange={hook.setTempExtraDaysValue}
+                onApplyExtraDays={(days) => {
+                  hook.setExtraDaysOverride(days);
+                  hook.setShowExtraDaysSection(false);
+                }}
+                onCancelExtraDays={() => {
+                  hook.setExtraDaysOverride(0);
+                  hook.setTempExtraDaysValue("");
+                  hook.setShowExtraDaysSection(false);
+                }}
+                onEditExtraDays={() => {
+                  hook.setTempExtraDaysValue(hook.originalExtraDaysCount.toString());
+                  hook.setShowExtraDaysSection(true);
+                }}
+              />
 
               <Separator />
 
@@ -82,37 +109,8 @@ export function ReservationCheckoutDialog({
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-semibold">{formatCurrency(hook.itemBasePrice)}</span>
+                  <span className="font-semibold">{formatCurrency(hook.itemSubtotal)}</span>
                 </div>
-
-                <ReservationCheckoutExtraDaysSection
-                  showExtraDaysSection={hook.showExtraDaysSection}
-                  applicableExtraDays={hook.applicableExtraDays}
-                  extraDaysAmount={hook.extraDaysAmount}
-                  extraDaysCount={hook.extraDaysCount}
-                  extraDayRate={hook.extraDayRate}
-                  originalExtraDaysCount={hook.originalExtraDaysCount}
-                  tempExtraDaysValue={hook.tempExtraDaysValue}
-                  formatCurrency={formatCurrency}
-                  onShowSection={() => {
-                    hook.setTempExtraDaysValue("");
-                    hook.setShowExtraDaysSection(true);
-                  }}
-                  onTempValueChange={hook.setTempExtraDaysValue}
-                  onApply={(days) => {
-                    hook.setExtraDaysOverride(days);
-                    hook.setShowExtraDaysSection(false);
-                  }}
-                  onCancel={() => {
-                    hook.setExtraDaysOverride(0);
-                    hook.setTempExtraDaysValue("");
-                    hook.setShowExtraDaysSection(false);
-                  }}
-                  onEdit={() => {
-                    hook.setTempExtraDaysValue(hook.originalExtraDaysCount.toString());
-                    hook.setShowExtraDaysSection(true);
-                  }}
-                />
 
                 <ReservationCheckoutDiscountSection
                   showDiscountSection={hook.showDiscountSection}
@@ -135,30 +133,47 @@ export function ReservationCheckoutDialog({
 
                 <div className="flex justify-between text-sm pt-2 border-t">
                   <span className="text-muted-foreground font-medium">
-                    {hook.isMultiItemOrder ? "Item Total" : "Order Total"}
+                    {hook.isMultiItemOrder ? "This item total" : "Order total"}
                   </span>
                   <span className="font-semibold text-base">{formatCurrency(hook.itemTotal)}</span>
                 </div>
 
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Paid for this item</span>
+                  <span className="font-semibold text-green-600 dark:text-green-400">
+                    {formatCurrency(hook.thisItemPaymentsTotal)}
+                  </span>
+                </div>
+
                 {hook.isMultiItemOrder && (
                   <>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground text-xs">Other items in order</span>
+                    <div className="flex justify-between text-sm pt-1 border-t border-dashed">
+                      <span className="text-muted-foreground text-xs">Other items in this order</span>
                       <span className="text-muted-foreground text-xs">{formatCurrency(hook.otherItemsTotal)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground font-medium">Order Total</span>
+                      <span className="text-muted-foreground font-medium">Order total</span>
                       <span className="font-semibold">{formatCurrency(hook.orderGrandTotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Already paid (order)</span>
+                      <span className="font-semibold text-green-600 dark:text-green-400">
+                        {formatCurrency(hook.alreadyPaid)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground font-medium">Balance due</span>
+                      <span className="font-semibold">{formatCurrency(hook.balanceDue)}</span>
                     </div>
                   </>
                 )}
 
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Already Paid</span>
-                  <span className="font-semibold text-green-600 dark:text-green-400">
-                    {formatCurrency(hook.alreadyPaid)}
-                  </span>
-                </div>
+                {!hook.isMultiItemOrder && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground font-medium">Balance due</span>
+                    <span className="font-semibold">{formatCurrency(hook.balanceDue)}</span>
+                  </div>
+                )}
 
                 {hasSurplus && (
                   <ReservationCheckoutSurplusSection
@@ -241,7 +256,7 @@ export function ReservationCheckoutDialog({
                 Processing...
               </>
             ) : (
-              <>{hasBalance ? `Pay & Rent - ${formatCurrency(allocatedTotal)}` : "Pay & Rent"}</>
+              <>{hasBalance ? `Pay & Rent - ${formatCurrency(allocatedTotal > 0.01 ? allocatedTotal : hook.balanceDue)}` : "Pay & Rent"}</>
             )}
           </Button>
         </DialogFooter>

@@ -151,7 +151,7 @@ export function ReturnCheckoutDialog({
 
               <ReturnItemDetails
                 item={returnDetails.item}
-                subtotal={subtotal}
+                subtotal={subtotal + totalExtraDays + currentItemLateFee}
                 extraDays={{
                   showSection: showExtraDaysSection,
                   applicableDays: applicableExtraDays,
@@ -319,7 +319,7 @@ export function ReturnCheckoutDialog({
                 Processing...
               </>
             ) : hasBalance ? (
-              `Pay & Return - ${formatCurrency(allocatedTotal)}`
+              `Pay & Return - ${formatCurrency(allocatedTotal > 0.01 ? allocatedTotal : balanceDue)}`
             ) : (
               'Confirm Return'
             )}

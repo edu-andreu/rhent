@@ -96,7 +96,7 @@ export const MyReservations = memo(function MyReservations({
 }: MyReservationsProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [editMode, setEditMode] = useState(false);
-  const [startDayFilter, setStartDayFilter] = useState<string>("this_month");
+  const [startDayFilter, setStartDayFilter] = useState<string>("next_30_days");
   const [convertRentalItemId, setConvertRentalItemId] = useState<string | null>(null);
   const [cancelRentalItemId, setCancelRentalItemId] = useState<string | null>(null);
   const [rescheduleReservation, setRescheduleReservation] = useState<Reservation | null>(null);
@@ -148,6 +148,13 @@ export const MyReservations = memo(function MyReservations({
       case "this_month": {
         rangeStart = new Date(today.getFullYear(), today.getMonth(), 1);
         rangeEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        rangeEnd.setHours(23, 59, 59, 999);
+        break;
+      }
+      case "next_30_days": {
+        rangeStart = new Date(today);
+        rangeEnd = new Date(today);
+        rangeEnd.setDate(rangeEnd.getDate() + 30);
         rangeEnd.setHours(23, 59, 59, 999);
         break;
       }
@@ -371,6 +378,7 @@ export const MyReservations = memo(function MyReservations({
               <SelectItem value="this_week">This Week</SelectItem>
               <SelectItem value="next_week">Next Week</SelectItem>
               <SelectItem value="this_month">This Month</SelectItem>
+              <SelectItem value="next_30_days">Next 30 Days</SelectItem>
               <SelectItem value="all">All</SelectItem>
             </SelectContent>
           </Select>
@@ -398,7 +406,7 @@ export const MyReservations = memo(function MyReservations({
             {searchQuery.trim()
               ? `No reservations found matching "${searchQuery}"`
               : startDayFilter !== "all"
-                ? `No reservations starting ${startDayFilter === "today" ? "today" : startDayFilter === "tomorrow" ? "tomorrow" : startDayFilter === "this_week" ? "this week" : startDayFilter === "next_week" ? "next week" : "this month"}`
+                ? `No reservations starting ${startDayFilter === "today" ? "today" : startDayFilter === "tomorrow" ? "tomorrow" : startDayFilter === "this_week" ? "this week" : startDayFilter === "next_week" ? "next week" : startDayFilter === "next_30_days" ? "in the next 30 days" : "this month"}`
                 : "No active reservations"
             }
           </p>

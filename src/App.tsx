@@ -52,6 +52,7 @@ function AppContent() {
 
   useEffect(() => {
     loadRentals();
+    loadReservations();
   }, []);
 
   const handleDeleteCustomer = async (customerId: string) => {

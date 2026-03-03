@@ -133,7 +133,8 @@ export function useReservationCheckout({
 
   // Financial calculations via shared engine
   const itemBasePrice = extraDays.basePrice;
-  const alreadyPaid = details?.financials.paymentsTotal || 0;
+  const orderPaymentsTotal = details?.financials.paymentsTotal || 0;
+  const thisItemPaymentsTotal = details?.financials.thisItemPaymentsTotal ?? 0;
   const otherItemsTotal = details?.financials.otherItemsTotal || 0;
   const isMultiItemOrder = (details?.financials.itemCount || 1) > 1;
   const initialDiscountPercent = details?.financials.discountPercent || 0;
@@ -153,21 +154,21 @@ export function useReservationCheckout({
     }],
     discount: discount.discountValue > 0 ? { type: discount.discountType, value: discount.discountValue, reason: discount.discountReason } : null,
     creditApplied,
-    alreadyPaid: alreadyPaid - otherItemsTotal,
+    alreadyPaid: thisItemPaymentsTotal,
   });
 
   const itemSubtotal = calcResult.subtotal;
   const discountAmount = calcResult.discountAmount;
   const itemTotal = calcResult.totalAfterDiscount;
   const orderGrandTotal = itemTotal + otherItemsTotal;
-  const balanceDueBeforeCredit = Math.max(0, orderGrandTotal - alreadyPaid);
+  const balanceDueBeforeCredit = Math.max(0, orderGrandTotal - orderPaymentsTotal);
   const balanceDue = Math.max(0, balanceDueBeforeCredit - creditApplied);
   const hasBalance = balanceDue > 0.01;
-  const surplus = Math.max(0, alreadyPaid - orderGrandTotal);
+  const surplus = Math.max(0, orderPaymentsTotal - orderGrandTotal);
   const hasSurplus = surplus > 0.01;
   const thisItemMinimum = Math.round(itemTotal * rentDownPct / 100);
   const orderMinimumTotal = thisItemMinimum + otherItemsMinimum;
-  const additionalMinimum = Math.max(0, orderMinimumTotal - alreadyPaid - creditApplied);
+  const additionalMinimum = Math.max(0, orderMinimumTotal - orderPaymentsTotal - creditApplied);
   const minimumRequired = Math.min(additionalMinimum, balanceDue);
 
   // Shared payment allocations
@@ -331,7 +332,8 @@ export function useReservationCheckout({
     customerCreditBalance,
     itemBasePrice,
     itemTotal,
-    alreadyPaid,
+    alreadyPaid: orderPaymentsTotal,
+    thisItemPaymentsTotal,
     otherItemsTotal,
     orderGrandTotal,
     isMultiItemOrder,

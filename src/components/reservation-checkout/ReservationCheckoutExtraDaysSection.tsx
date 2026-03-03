@@ -36,12 +36,14 @@ export function ReservationCheckoutExtraDaysSection({
 }: Props) {
   if (!showExtraDaysSection && applicableExtraDays > 0 && extraDaysAmount === 0) {
     return (
-      <div>
-        <button type="button" onClick={onShowSection} className="flex items-center gap-1.5 text-sm text-foreground hover:text-foreground/80">
-          <Calendar className="w-3.5 h-3.5" />
-          <span>Extra days charge</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={onShowSection}
+        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Calendar className="w-3 h-3" />
+        <span>Apply extra days charge</span>
+      </button>
     );
   }
   if (showExtraDaysSection) {
@@ -78,24 +80,25 @@ export function ReservationCheckoutExtraDaysSection({
       </div>
     );
   }
-  if (extraDaysAmount > 0) {
+  if (!showExtraDaysSection && extraDaysAmount > 0) {
     return (
-      <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-            <div className="text-sm">
-              <span className="text-amber-700 dark:text-amber-300 font-medium">Extra days charge</span>
-              <span className="text-amber-600 dark:text-amber-500 text-xs ml-1">({extraDaysCount} {extraDaysCount === 1 ? "day" : "days"})</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-amber-700 dark:text-amber-300 font-semibold text-sm">+{formatCurrency(extraDaysAmount)}</span>
-            <button type="button" onClick={onEdit} className="text-amber-600 dark:text-amber-500 hover:text-amber-700" title="Edit extra days charge">
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-          </div>
+      <div className="flex justify-between items-center text-[11px]">
+        <div className="flex items-center gap-1">
+          <span className="text-amber-700 dark:text-amber-400">
+            +{extraDaysCount} extra {extraDaysCount === 1 ? "day" : "days"}
+          </span>
+          <button
+            type="button"
+            onClick={onEdit}
+            className="text-amber-600 dark:text-amber-500 hover:text-amber-700 dark:hover:text-amber-400 transition-colors"
+            title="Edit extra days charge"
+          >
+            <Pencil className="w-3 h-3" />
+          </button>
         </div>
+        <span className="font-medium text-amber-700 dark:text-amber-400">
+          +{formatCurrency(extraDaysAmount)}
+        </span>
       </div>
     );
   }

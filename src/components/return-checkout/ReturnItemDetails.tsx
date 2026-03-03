@@ -342,18 +342,6 @@ export function ReturnItemDetails({
           <span className="text-muted-foreground">Subtotal</span>
           <span className="font-semibold">{formatCurrency(subtotal)}</span>
         </div>
-        {extraDays.amount > 0 && (
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Extra days</span>
-            <span className="font-semibold">+{formatCurrency(extraDays.amount)}</span>
-          </div>
-        )}
-        {lateFee.amount > 0 && (
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Late fees</span>
-            <span className="font-semibold">+{formatCurrency(lateFee.amount)}</span>
-          </div>
-        )}
       </div>
     </>
   );

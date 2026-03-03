@@ -58,6 +58,7 @@ const mockDetails = {
     depositsTotal: 0,
     grandTotal: 15000,
     paymentsTotal: 0,
+    thisItemPaymentsTotal: 0,
     balanceDue: 15000,
     itemCount: 1,
     discountPercent: 0,

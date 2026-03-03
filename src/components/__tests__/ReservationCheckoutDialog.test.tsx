@@ -57,6 +57,7 @@ const defaultHookReturn = {
   togglePaymentMethod: vi.fn(),
   updatePaymentAmount: vi.fn(),
   balanceDue: 0,
+  thisItemPaymentsTotal: 0,
   minimumRequired: 0,
   remainingAmount: 0,
   handleConfirm: vi.fn(),

@@ -46,6 +46,8 @@ export interface ReservationDetails {
     depositsTotal: number;
     grandTotal: number;
     paymentsTotal: number;
+    /** Sum of payments attributed to this rental_item_id (per-item "already paid") */
+    thisItemPaymentsTotal: number;
     balanceDue: number;
     itemCount: number;
     discountPercent: number;
