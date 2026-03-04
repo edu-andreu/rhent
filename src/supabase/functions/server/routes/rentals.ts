@@ -879,7 +879,7 @@ payments:`, payments);
 
     // Step 1: Create payment records for the balance (or debt settlement payments)
     const paymentIds: string[] = [];
-    if ((balanceDue > 0.01 || hasDebtSettlement) && payments && payments.length > 0) {
+    if ((itemBalanceBefore > 0.01 || hasDebtSettlement) && payments && payments.length > 0) {
       for (const payment of payments) {
         const { data: paymentRecord, error: paymentError } = await supabase
           .from("payments")
