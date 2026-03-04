@@ -296,24 +296,15 @@ app.get("/make-server-918f1e54/rentals/return-details/:rentalItemId", async (c) 
     const itemDiscountAmount = parseFloat(item.discount_amount) || 0;
     const itemGrandTotal = unitPrice + extraDaysAmount + existingLateFee - itemDiscountAmount;
 
-    // Recompute "already paid" for this item using waterfall allocation so that both legacy
-    // (proportional) and new (waterfall) checkouts display correctly on return.
-    const orderPaymentsTotal = parseFloat((totals as any)?.payments_total) || 0;
-    let itemPaymentsTotal = 0;
-    if (allItems && allItems.length > 0 && orderPaymentsTotal > 0) {
-      const itemsForAllocation = (allItems as any[])
-        .map((oi: any) => {
-          const up = parseFloat(oi.unit_price) || 0;
-          const extra = parseFloat(oi.extra_days_amount) || 0;
-          const disc = parseFloat(oi.discount_amount) || 0;
-          const late = parseFloat(oi.late_fee_amount) || 0;
-          return { id: oi.id, subtotal: up + extra - disc + late };
-        })
-        .sort((a, b) => (a.id < b.id ? -1 : 1));
-      const allocations = allocatePaymentToItems(orderPaymentsTotal, itemsForAllocation);
-      const allocated = allocations.find((a) => a.rentalItemId === rentalItemId);
-      if (allocated != null) itemPaymentsTotal = allocated.amount;
-    }
+    // Query actual per-item payments from the payments table (stored during checkout)
+    const { data: thisItemPayments } = await supabase
+      .from("payments")
+      .select("amount")
+      .eq("rental_item_id", rentalItemId);
+    const itemPaymentsTotal = (thisItemPayments || []).reduce(
+      (sum: number, p: any) => sum + (parseFloat(p.amount) || 0),
+      0
+    );
     const itemBalanceDue = Math.max(0, itemGrandTotal - itemPaymentsTotal);
 
     return c.json({
