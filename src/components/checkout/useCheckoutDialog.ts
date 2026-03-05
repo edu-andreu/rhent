@@ -25,7 +25,7 @@ export interface PaymentAllocation {
 export interface CheckoutDialogProps {
   open: boolean;
   onClose: () => void;
-  onConfirm: (payments: Array<{ methodId: string; methodName: string; amount: number }>, discount?: { type: 'percentage' | 'fixed'; value: number; reason?: string }, customerId?: string, updatedCartItems?: CartItem[]) => void;
+  onConfirm: (payments: Array<{ methodId: string; methodName: string; amount: number }>, discount?: { type: 'percentage' | 'fixed'; value: number; reason?: string }, customerId?: string, updatedCartItems?: CartItem[], creditApplied?: number) => void;
   cartItems: CartItem[];
   customers: Customer[];
   onAddNewCustomer: () => void;
@@ -80,6 +80,10 @@ export function useCheckoutDialog({
   const [showDrawerAlert, setShowDrawerAlert] = useState(false);
   const [drawerAlertMessage, setDrawerAlertMessage] = useState<string>('');
 
+  const [showCreditSection, setShowCreditSection] = useState(false);
+  const [creditApplied, setCreditApplied] = useState<number>(0);
+  const [tempCreditAmount, setTempCreditAmount] = useState<string>('');
+
   // --- Build per-item line items and run calculation engine ---
 
   const lineItems: CheckoutLineItem[] = useMemo(() => cartItems.map(item => {
@@ -104,9 +108,9 @@ export function useCheckoutDialog({
   const calcResult = useMemo(() => calculateCheckout({
     items: lineItems,
     discount: discountValue > 0 ? { type: discountType, value: discountValue, reason: discountReason } : null,
-    creditApplied: 0,
+    creditApplied,
     alreadyPaid: 0,
-  }), [lineItems, discountType, discountValue, discountReason]);
+  }), [lineItems, discountType, discountValue, discountReason, creditApplied]);
 
   // --- Derived values from calcResult ---
 
@@ -117,7 +121,8 @@ export function useCheckoutDialog({
 
   const subtotal = calcResult.subtotal;
   const discountAmount = calcResult.discountAmount;
-  const total = calcResult.totalAfterDiscount;
+  const totalAfterDiscount = calcResult.totalAfterDiscount;
+  const total = calcResult.grandTotal;
 
   // Per-type subtotals (from calc result items, matched back to cart item type)
   const typeSubtotals = useMemo(() => {
@@ -142,7 +147,7 @@ export function useCheckoutDialog({
   const rentalMinimum = Math.round(rentalSubtotal * rentDownPaymentPct / 100);
   const reservationMinimum = Math.round(reservationSubtotal * reservationDownPaymentPct / 100);
   const saleMinimum = Math.round(saleSubtotal);
-  const minimumRequired = rentalMinimum + reservationMinimum + saleMinimum;
+  const minimumRequired = Math.min(rentalMinimum + reservationMinimum + saleMinimum, Math.max(0, total));
 
   const effectiveDownPaymentPctLabel = useMemo(() => {
     if (hasSales) return null;
@@ -238,6 +243,43 @@ export function useCheckoutDialog({
     setTempExtraDaysValue('');
   }, []);
 
+  // --- Credit handlers ---
+  const handleApplyCredit = useCallback(() => {
+    const value = parseFloat(tempCreditAmount) || 0;
+    const maxApplicable = customerCreditBalance > 0
+      ? Math.min(customerCreditBalance, totalAfterDiscount)
+      : Math.abs(customerCreditBalance);
+    const clamped = customerCreditBalance < 0 ? -Math.min(value, maxApplicable) : Math.min(value, maxApplicable);
+    setCreditApplied(clamped);
+    setShowCreditSection(false);
+    setTempCreditAmount('');
+  }, [tempCreditAmount, customerCreditBalance, totalAfterDiscount]);
+
+  const handleCancelCredit = useCallback(() => {
+    setTempCreditAmount('');
+    setShowCreditSection(false);
+    if (customerCreditBalance < 0 && creditApplied === 0) setCreditApplied(customerCreditBalance);
+  }, [customerCreditBalance, creditApplied]);
+
+  const handleRemoveCredit = useCallback(() => {
+    setCreditApplied(0);
+    setTempCreditAmount('');
+    setShowCreditSection(false);
+  }, []);
+
+  const handleEditCredit = useCallback(() => {
+    setTempCreditAmount(Math.abs(creditApplied).toString());
+    setCreditApplied(0);
+    setShowCreditSection(true);
+  }, [creditApplied]);
+
+  useEffect(() => {
+    if (creditApplied > 0 && customerCreditBalance > 0) {
+      const maxApplicable = Math.min(customerCreditBalance, totalAfterDiscount);
+      if (creditApplied > maxApplicable) setCreditApplied(maxApplicable);
+    }
+  }, [totalAfterDiscount, customerCreditBalance, creditApplied]);
+
   // --- Handlers ---
 
   const handleConfirm = useCallback(async () => {
@@ -269,7 +311,7 @@ export function useCheckoutDialog({
       return;
     }
 
-    if (paymentAllocations.length === 0) {
+    if (total >= 0.01 && paymentAllocations.length === 0) {
       toast.error('Please select at least one payment method');
       return;
     }
@@ -314,13 +356,16 @@ export function useCheckoutDialog({
       };
     });
 
-    onConfirm(payments, discount, selectedCustomer.id, updatedCart);
+    onConfirm(payments, discount, selectedCustomer.id, updatedCart, creditApplied !== 0 ? creditApplied : undefined);
     setPaymentAllocations([]);
     setDiscountValue(0);
     setDiscountReason('');
+    setCreditApplied(0);
+    setShowCreditSection(false);
+    setTempCreditAmount('');
     setItemExtraDaysOverrides({});
     setSelectedCustomer(null);
-  }, [paymentAllocations, paymentMethods, drawerStatus, selectedCustomer, total, minimumRequired, effectiveDownPaymentPctLabel, discountValue, discountType, discountReason, calcResult.items, cartItems, onConfirm, formatCurrency]);
+  }, [paymentAllocations, paymentMethods, drawerStatus, selectedCustomer, total, minimumRequired, effectiveDownPaymentPctLabel, discountValue, discountType, discountReason, calcResult.items, cartItems, onConfirm, formatCurrency, creditApplied]);
 
   const handleClose = useCallback(() => {
     if (!processing) {
@@ -330,6 +375,9 @@ export function useCheckoutDialog({
       setDiscountReason('');
       setTempDiscountValue('');
       setTempDiscountReason('');
+      setCreditApplied(0);
+      setShowCreditSection(false);
+      setTempCreditAmount('');
       setItemExtraDaysOverrides({});
       setEditingExtraDaysItemId(null);
       setTempExtraDaysValue('');
@@ -450,6 +498,17 @@ export function useCheckoutDialog({
     minimumRequired,
     effectiveDownPaymentPctLabel,
     customerCreditBalance,
+    creditApplied,
+    showCreditSection,
+    tempCreditAmount,
+    totalAfterDiscount,
+    setShowCreditSection,
+    setTempCreditAmount,
+    setCreditApplied,
+    handleApplyCredit,
+    handleCancelCredit,
+    handleRemoveCredit,
+    handleEditCredit,
     allocatedTotal,
     remainingAmount,
     formatCurrency,

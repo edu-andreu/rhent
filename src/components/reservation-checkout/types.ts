@@ -76,8 +76,10 @@ export interface ReservationDetails {
     extraDaysAmount: number;
     discountAmount: number;
     status: string;
+    isSale: boolean;
     startDate: string;
     endDate: string;
     deposit: number;
+    paidTotal: number;
   }>;
 }

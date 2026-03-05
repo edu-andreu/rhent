@@ -107,7 +107,7 @@ export function RescheduleReservationDialog({ reservation, open, onClose, onConf
 
   const handleConfirm = async () => {
     if (!booking.startDate || !booking.endDate || !reservation) return;
-    if (!booking.validateDates({ excludeReservationId: reservation.id })) return;
+    if (!booking.validateDates({ excludeRentalItemId: reservation.id })) return;
 
     const newStartStr = formatDateLocal(booking.startDate);
     const newEndStr = formatDateLocal(booking.endDate);

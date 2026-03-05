@@ -34,12 +34,22 @@ export function ReturnCreditSection({
 }: ReturnCreditSectionProps) {
   const formatCurrency = formatCurrencyARS;
 
-  // Only show if customer has credit balance AND no surplus
   if (customerCreditBalance === 0) {
     return null;
   }
 
-  // Show link when credit not applied
+  // Return fully paid and no credit applied: show friendly message
+  if (balanceDueBeforeCredit < 0.01 && creditApplied === 0) {
+    return (
+      <div className={`rounded-lg border px-3 py-2.5 text-sm ${customerCreditBalance > 0 ? "border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20" : "border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20"}`}>
+        <p className={customerCreditBalance > 0 ? "text-blue-700 dark:text-blue-300" : "text-purple-700 dark:text-purple-300"}>
+          This return is fully paid. Your store credit remains available for future rentals or returns.
+        </p>
+      </div>
+    );
+  }
+
+  // Show link when credit not applied but there is balance due
   if (!showCreditSection && creditApplied === 0) {
     return (
       <div>

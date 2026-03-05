@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
-import { Loader2, ShoppingCart, Lock } from "lucide-react";
+import { Loader2, ShoppingCart, Lock, Wallet } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 import { formatCurrencyARS } from "../shared/format/currency";
 import { useReturnCheckout } from "./return-checkout/hooks/useReturnCheckout";
@@ -149,6 +149,21 @@ export function ReturnCheckoutDialog({
             <div className="space-y-4">
               <ReturnCustomerInfo customer={returnDetails.customer} />
 
+              {/* Store credit banner: always show when customer has credit so they're aware */}
+              {customerCreditBalance !== 0 && (
+                <div className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border ${customerCreditBalance > 0 ? "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800" : "bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800"}`}>
+                  <Wallet className={`w-4 h-4 mt-0.5 flex-shrink-0 ${customerCreditBalance > 0 ? "text-blue-600 dark:text-blue-400" : "text-purple-600 dark:text-purple-400"}`} />
+                  <div>
+                    <p className={`text-sm font-medium ${customerCreditBalance > 0 ? "text-blue-700 dark:text-blue-300" : "text-purple-700 dark:text-purple-300"}`}>
+                      {customerCreditBalance > 0 ? `Store credit available: ${formatCurrency(customerCreditBalance)}` : `Store debit: ${formatCurrency(Math.abs(customerCreditBalance))}`}
+                    </p>
+                    <p className="text-xs mt-0.5 text-muted-foreground">
+                      {customerCreditBalance > 0 ? "You can apply it to this return below, or keep it for future rentals." : "It can be settled with this return below."}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <ReturnItemDetails
                 item={returnDetails.item}
                 subtotal={subtotal + totalExtraDays + currentItemLateFee}
@@ -222,8 +237,8 @@ export function ReturnCheckoutDialog({
                 <span className="font-semibold text-base">{formatCurrency(grandTotal)}</span>
               </div>
 
-              {/* Store Credit / Outstanding Balance — only show if customer has credit balance AND no surplus */}
-              {customerCreditBalance !== 0 && !hasSurplus && (
+              {/* Store Credit / Outstanding Balance — show whenever customer has credit */}
+              {customerCreditBalance !== 0 && (
                 <ReturnCreditSection
                   showCreditSection={showCreditSection}
                   creditApplied={creditApplied}

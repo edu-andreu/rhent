@@ -17,15 +17,17 @@ export function registerCheckoutRoutes(
 app.post("/make-server-918f1e54/checkout", async (c) => {
   try {
     const body = await c.req.json();
-    const { cartItems, payments, discount, customerId } = body;
+    const { cartItems, payments, discount, customerId, creditApplied: creditAppliedRaw } = body;
+    const creditApplied = Math.round(parseFloat(creditAppliedRaw) || 0);
 
     // Validate input
     if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
       return c.json({ error: "Cart items are required" }, 400);
     }
 
-    if (!payments || !Array.isArray(payments) || payments.length === 0) {
-      return c.json({ error: "Payment information is required" }, 400);
+    const paymentsList = Array.isArray(payments) ? payments : [];
+    if (paymentsList.length === 0 && creditApplied < 0.01) {
+      return c.json({ error: "Payment information or store credit is required" }, 400);
     }
 
     if (!customerId || typeof customerId !== "string" || customerId.trim() === "") {
@@ -35,9 +37,9 @@ app.post("/make-server-918f1e54/checkout", async (c) => {
     // DRAWER VALIDATION - Only check if cash payment is being used
     let openDrawer: any = null;
     
-    if (payments && Array.isArray(payments) && payments.length > 0) {
+    if (paymentsList.length > 0) {
       // Get payment method IDs from the payments array
-      const paymentMethodIds = payments.map((p: any) => p.methodId).filter(Boolean);
+      const paymentMethodIds = paymentsList.map((p: any) => p.methodId).filter(Boolean);
       console.log('🔍 [CHECKOUT] Drawer validation - paymentMethodIds:', paymentMethodIds);
       
       if (paymentMethodIds.length > 0) {
@@ -86,7 +88,7 @@ app.post("/make-server-918f1e54/checkout", async (c) => {
 
     // Calculate total amount from cart
     const cartTotal = cartItems.reduce((sum: number, item: any) => sum + (item.amount || 0), 0);
-    const paymentsTotal = payments.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+    const paymentsTotal = paymentsList.reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
 
     // Calculate expected total after discount
     let expectedTotal = cartTotal;
@@ -96,6 +98,7 @@ app.post("/make-server-918f1e54/checkout", async (c) => {
         : Math.min(discount.value, cartTotal);
       expectedTotal = Math.max(0, cartTotal - discountAmount);
     }
+    const expectedTotalAfterCredit = Math.max(0, expectedTotal - creditApplied);
 
     // Fetch down payment configuration for minimum payment validation
     let rentDownPct = 50;
@@ -150,18 +153,35 @@ app.post("/make-server-918f1e54/checkout", async (c) => {
     const saleMinimum = Math.round(saleSubtotal * discountRatio); // 100% for sales
     const minimumRequired = rentalMinimum + reservationMinimum + saleMinimum;
 
-    // Validate payment: must not exceed total
-    if (paymentsTotal > expectedTotal + 0.01) {
+    // Validate payment + credit: must not exceed total
+    if (paymentsTotal + creditApplied > expectedTotal + 0.01) {
       return c.json({ 
-        error: `Payment total (${paymentsTotal}) exceeds expected total (${expectedTotal}). Cart total: ${cartTotal}${discount ? `, Discount: ${discount.type === 'percentage' ? discount.value + '%' : '$' + discount.value}` : ''}` 
+        error: `Payment total (${paymentsTotal})${creditApplied > 0 ? ` + store credit (${creditApplied})` : ''} exceeds expected total (${expectedTotal}). Cart total: ${cartTotal}${discount ? `, Discount: ${discount.type === 'percentage' ? discount.value + '%' : '$' + discount.value}` : ''}` 
       }, 400);
     }
 
-    // Validate payment: must meet minimum down payment
-    if (paymentsTotal < minimumRequired - 0.01) {
+    // Validate payment + credit: must meet minimum down payment (minimum applies to amount due before credit)
+    const totalCoverage = paymentsTotal + creditApplied;
+    if (totalCoverage < minimumRequired - 0.01) {
       return c.json({ 
-        error: `Payment total (${paymentsTotal}) is below the minimum down payment required (${minimumRequired}). Rentals: ${rentDownPct}%, Reservations: ${resDownPct}%` 
+        error: `Payment total (${paymentsTotal})${creditApplied > 0 ? ` + store credit (${creditApplied})` : ''} is below the minimum down payment required (${minimumRequired}). Rentals: ${rentDownPct}%, Reservations: ${resDownPct}%` 
       }, 400);
+    }
+
+    // If store credit applied, verify customer has sufficient balance
+    if (creditApplied > 0.01) {
+      const { data: custRow, error: custErr } = await supabase
+        .from("customers")
+        .select("credit_balance")
+        .eq("customer_id", customerId)
+        .single();
+      if (custErr || !custRow) {
+        return c.json({ error: "Failed to verify customer store credit" }, 400);
+      }
+      const balance = parseFloat((custRow as any).credit_balance || "0");
+      if (balance < creditApplied - 0.01) {
+        return c.json({ error: `Customer store credit (${balance}) is less than amount to apply (${creditApplied})` }, 400);
+      }
     }
 
     // Calculate discount percentage and notes
@@ -416,7 +436,7 @@ app.post("/make-server-918f1e54/checkout", async (c) => {
 
     // Step 3: Create payment records split across rental items (waterfall: each payment fills items in order)
     const remainingSubtotals = rentalItemSubtotals.map((s) => ({ id: s.id, subtotal: s.subtotal }));
-    for (const payment of payments) {
+    for (const payment of paymentsList) {
       const allocations = allocatePaymentToItems(payment.amount, remainingSubtotals);
       let firstPaymentId: string | null = null;
 
@@ -477,6 +497,69 @@ app.post("/make-server-918f1e54/checkout", async (c) => {
         }
       } else if (!openDrawer) {
         console.log(`⚠️ [CHECKOUT] Skipping drawer transaction - no open drawer`);
+      }
+    }
+
+    // Step 3b: If store credit was applied, create Store Credit payment and deduct from customer balance
+    if (creditApplied > 0.01 && rentalItemIds.length > 0) {
+      const { data: storeCreditMethod, error: scMethodError } = await supabase
+        .from("payments_methods")
+        .select("id, payment_method")
+        .ilike("payment_method", "Store Credit")
+        .single();
+
+      if (scMethodError || !storeCreditMethod) {
+        console.log("Error finding Store Credit payment method:", scMethodError);
+        await supabase.from("rentals").delete().eq("id", rentalId);
+        return c.json({ error: "Store Credit payment method not found. Please create it in payment methods." }, 500);
+      }
+
+      const firstRentalItemId = rentalItemIds[0];
+      const { data: creditPaymentRecord, error: creditPaymentError } = await supabase
+        .from("payments")
+        .insert({
+          rental_id: rentalId,
+          rental_item_id: firstRentalItemId,
+          payment_method_id: (storeCreditMethod as any).id,
+          amount: creditApplied,
+          currency: "ARS",
+          paid_at: nowUTC.toISOString(),
+          reference: "store-credit-applied",
+          created_by: "system",
+        })
+        .select("id")
+        .single();
+
+      if (creditPaymentError || !creditPaymentRecord) {
+        console.log("Error creating store credit payment:", creditPaymentError);
+        await supabase.from("rentals").delete().eq("id", rentalId);
+        return c.json({ error: `Failed to create store credit payment: ${creditPaymentError?.message}` }, 500);
+      }
+      paymentIds.push((creditPaymentRecord as any).id);
+
+      const { data: custRow2, error: custUpdateErr } = await supabase
+        .from("customers")
+        .select("credit_balance")
+        .eq("customer_id", customerId)
+        .single();
+
+      if (custUpdateErr || !custRow2) {
+        console.log("Error fetching customer for credit deduction:", custUpdateErr);
+      } else {
+        const currentBalance = parseFloat((custRow2 as any).credit_balance || "0");
+        const newBalance = currentBalance - creditApplied;
+        const { error: updateErr } = await supabase
+          .from("customers")
+          .update({
+            credit_balance: newBalance,
+            updated_at: nowUTC.toISOString(),
+          })
+          .eq("customer_id", customerId);
+        if (updateErr) {
+          console.log("Error updating customer credit balance:", updateErr);
+        } else {
+          console.log(`Checkout: applied store credit ${creditApplied}; customer balance ${currentBalance} -> ${newBalance}`);
+        }
       }
     }
 

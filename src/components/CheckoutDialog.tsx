@@ -42,6 +42,23 @@ export function CheckoutDialog(props: CheckoutDialogProps) {
               customerCreditBalance={ctx.customerCreditBalance}
               onAddNewCustomer={ctx.onAddNewCustomer}
               onClose={ctx.handleClose}
+              creditApplied={ctx.creditApplied}
+              showCreditSection={ctx.showCreditSection}
+              tempCreditAmount={ctx.tempCreditAmount}
+              totalAfterDiscount={ctx.totalAfterDiscount}
+              onShowCreditSection={() => {
+                const max = ctx.customerCreditBalance > 0
+                  ? Math.min(ctx.customerCreditBalance, ctx.totalAfterDiscount)
+                  : Math.abs(ctx.customerCreditBalance);
+                ctx.setTempCreditAmount(max.toString());
+                ctx.setShowCreditSection(true);
+              }}
+              onHideCreditSection={() => ctx.setShowCreditSection(false)}
+              onTempCreditAmountChange={ctx.setTempCreditAmount}
+              onApplyCredit={ctx.handleApplyCredit}
+              onCancelCredit={ctx.handleCancelCredit}
+              onRemoveCredit={ctx.handleRemoveCredit}
+              onEditCredit={ctx.handleEditCredit}
             />
 
             <CheckoutOrderSummary
@@ -122,7 +139,7 @@ export function CheckoutDialog(props: CheckoutDialogProps) {
             id="checkout-confirm-button"
             data-testid="checkout-confirm-button"
             onClick={ctx.handleConfirm}
-            disabled={!ctx.selectedCustomer || !ctx.configLoaded || ctx.paymentAllocations.length === 0 || ctx.processing || ctx.allocatedTotal < ctx.minimumRequired - 0.01 || ctx.allocatedTotal > ctx.total + 0.01}
+            disabled={!ctx.selectedCustomer || !ctx.configLoaded || (ctx.total >= 0.01 && ctx.paymentAllocations.length === 0) || ctx.processing || ctx.allocatedTotal < ctx.minimumRequired - 0.01 || ctx.allocatedTotal > ctx.total + 0.01}
             size="lg"
             aria-busy={ctx.processing}
             aria-label={ctx.processing ? "Processing payment" : `Pay ${ctx.formatCurrency(ctx.allocatedTotal || 0)}`}

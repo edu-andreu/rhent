@@ -26,16 +26,19 @@ export function usePayment(options: UsePaymentOptions) {
       payments: Array<{ methodId: string; methodName: string; amount: number }>,
       discount?: { type: "percentage" | "fixed"; value: number; reason?: string },
       customerId?: string,
-      updatedCartItems?: CartItem[]
+      updatedCartItems?: CartItem[],
+      creditApplied?: number
     ) => {
       const itemsToCheckout = updatedCartItems ?? cartItems;
 
       if (itemsToCheckout.length === 0) return;
-      if (payments.length === 0) return;
       if (!customerId) {
         toast.error(ERROR_MESSAGES.CUSTOMER_REQUIRED);
         return;
       }
+      const hasPayments = payments.length > 0;
+      const hasCredit = (creditApplied ?? 0) > 0.01;
+      if (!hasPayments && !hasCredit) return;
 
       try {
         await postFunction<{ rentalId?: string }>("checkout", {
@@ -43,6 +46,7 @@ export function usePayment(options: UsePaymentOptions) {
           payments,
           discount,
           customerId,
+          ...(creditApplied != null && creditApplied !== 0 ? { creditApplied } : {}),
         });
 
         clearCart();

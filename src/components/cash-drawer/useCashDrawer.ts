@@ -27,7 +27,7 @@ export interface DrawerSummary {
 
 export interface DrawerTransaction {
   transactionId: string;
-  transactionType: 'checkout' | 'return_checkout' | 'reservation_checkout' | 'cancellation' | 'cash_in' | 'cash_out';
+  transactionType: 'checkout' | 'return_checkout' | 'reservation_checkout' | 'cancellation' | 'cash_in' | 'cash_out' | 'in' | 'out';
   amount: number;
   createdAt: string;
   referenceId: string;
@@ -101,7 +101,12 @@ export const formatBusinessDate = (dateString: string) => {
 };
 
 export const isTransactionEditable = (t: DrawerTransaction) => {
-  return ['cash_in', 'cash_out'].includes(t.transactionType) && t.referenceType === 'Manual';
+  return ['cash_in', 'cash_out', 'in', 'out'].includes(t.transactionType) && t.referenceType === 'Manual';
+};
+
+/** True if the transaction represents money leaving the drawer (e.g. refund, cash out, cancellation). */
+export const isCashOutTransaction = (t: DrawerTransaction) => {
+  return ['cancellation', 'cash_out', 'out'].includes(t.transactionType);
 };
 
 export function useCashDrawer() {

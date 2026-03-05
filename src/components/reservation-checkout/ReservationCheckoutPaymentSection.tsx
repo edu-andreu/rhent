@@ -105,24 +105,6 @@ export function ReservationCheckoutPaymentSection({
           </div>
         )}
       </div>
-      <div className="bg-primary/10 p-3.5 rounded-lg">
-        <div className="flex justify-between items-center">
-          <span className="text-base font-semibold">Balance Due</span>
-          <span className="text-xl font-bold">{formatCurrency(balanceDue)}</span>
-        </div>
-        {minimumRequired < balanceDue && minimumRequired > 0 && (
-          <div className="flex justify-between items-center mt-2 pt-2 border-t border-primary/10 text-sm text-muted-foreground">
-            <span className="font-medium">Minimum upfront required</span>
-            <span className="font-semibold text-foreground">{formatCurrency(minimumRequired)}</span>
-          </div>
-        )}
-        {allocatedTotal > 0 && remainingAmount > 0.01 && allocatedTotal >= minimumRequired - 0.01 && (
-          <div className="flex justify-between items-center mt-2 pt-2 border-t border-primary/10 text-sm">
-            <span className="font-medium">Balance Due</span>
-            <span className="font-semibold">{formatCurrency(remainingAmount)}</span>
-          </div>
-        )}
-      </div>
     </>
   );
 }

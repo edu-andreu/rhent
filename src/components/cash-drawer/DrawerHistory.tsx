@@ -3,7 +3,7 @@ import { DollarSign, Lock, Wallet, TrendingUp, TrendingDown, ChevronDown } from 
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import { formatCurrency, formatDateTime, DrawerHistoryItem, DrawerTransaction, DrawerSummary } from "./useCashDrawer";
+import { formatCurrency, formatDateTime, isCashOutTransaction, DrawerHistoryItem, DrawerTransaction, DrawerSummary } from "./useCashDrawer";
 
 interface DrawerHistoryProps {
   drawerHistory: DrawerHistoryItem[];
@@ -166,8 +166,8 @@ export function DrawerHistory({
                                         <TableCell className="max-w-[250px] truncate py-2 text-xs text-muted-foreground">
                                           {t.notes || '-'}
                                         </TableCell>
-                                        <TableCell className={`text-right font-medium py-2 ${t.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                          {t.amount > 0 ? '+' : ''}${formatCurrency(Math.abs(t.amount))}
+                                        <TableCell className={`text-right font-medium py-2 ${isCashOutTransaction(t) ? 'text-red-600' : t.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                          {!isCashOutTransaction(t) && t.amount > 0 ? '+' : ''}${formatCurrency(Math.abs(t.amount))}
                                         </TableCell>
                                       </TableRow>
                                     ))}

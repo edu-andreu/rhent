@@ -1,7 +1,8 @@
 import React from "react";
-import { User, UserPlus, Search, Phone, Wallet } from "lucide-react";
+import { User, UserPlus, Search, Phone, Wallet, X } from "lucide-react";
 import { Customer } from "../../types";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { ScrollArea } from "../ui/scroll-area";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
@@ -19,6 +20,17 @@ interface CheckoutCustomerSectionProps {
   customerCreditBalance: number;
   onAddNewCustomer: () => void;
   onClose: () => void;
+  creditApplied?: number;
+  showCreditSection?: boolean;
+  tempCreditAmount?: string;
+  totalAfterDiscount?: number;
+  onShowCreditSection?: () => void;
+  onHideCreditSection?: () => void;
+  onTempCreditAmountChange?: (value: string) => void;
+  onApplyCredit?: () => void;
+  onCancelCredit?: () => void;
+  onRemoveCredit?: () => void;
+  onEditCredit?: () => void;
 }
 
 export function CheckoutCustomerSection({
@@ -32,8 +44,20 @@ export function CheckoutCustomerSection({
   customerCreditBalance,
   onAddNewCustomer,
   onClose,
+  creditApplied = 0,
+  showCreditSection = false,
+  tempCreditAmount = "",
+  totalAfterDiscount = 0,
+  onShowCreditSection,
+  onHideCreditSection,
+  onTempCreditAmountChange,
+  onApplyCredit,
+  onCancelCredit,
+  onRemoveCredit,
+  onEditCredit,
 }: CheckoutCustomerSectionProps) {
   const formatCurrency = formatCurrencyARS;
+  const hasCreditUI = typeof onApplyCredit === "function" && totalAfterDiscount !== undefined;
 
   return (
     <>
@@ -129,17 +153,71 @@ export function CheckoutCustomerSection({
         )}
       </div>
 
-      {/* Credit Balance Info Banner */}
+      {/* Credit Balance Info Banner + Apply store credit */}
       {selectedCustomer && customerCreditBalance !== 0 && (
-        <div className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border ${customerCreditBalance > 0 ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800' : 'bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800'}`}>
-          <Wallet className={`w-4 h-4 mt-0.5 flex-shrink-0 ${customerCreditBalance > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'}`} />
-          <div>
-            <p className={`text-sm font-medium ${customerCreditBalance > 0 ? 'text-blue-700 dark:text-blue-300' : 'text-purple-700 dark:text-purple-300'}`}>
+        <div className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border ${customerCreditBalance > 0 ? "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800" : "bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800"}`}>
+          <Wallet className={`w-4 h-4 mt-0.5 flex-shrink-0 ${customerCreditBalance > 0 ? "text-blue-600 dark:text-blue-400" : "text-purple-600 dark:text-purple-400"}`} />
+          <div className="flex-1 min-w-0">
+            <p className={`text-sm font-medium ${customerCreditBalance > 0 ? "text-blue-700 dark:text-blue-300" : "text-purple-700 dark:text-purple-300"}`}>
               {customerCreditBalance > 0 ? `Store credit: ${formatCurrency(customerCreditBalance)}` : `Store debit: ${formatCurrency(Math.abs(customerCreditBalance))}`}
             </p>
-            <p className={`text-xs mt-0.5 ${customerCreditBalance > 0 ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'}`}>
-              {customerCreditBalance > 0 ? 'This credit can be applied when the item is returned.' : 'This debit can be settled when the item is returned.'}
+            <p className={`text-xs mt-0.5 ${customerCreditBalance > 0 ? "text-blue-600 dark:text-blue-400" : "text-purple-600 dark:text-purple-400"}`}>
+              {hasCreditUI
+                ? (customerCreditBalance > 0 ? "You can apply this credit to reduce the amount due below." : "You can settle this debit with the payment below.")
+                : (customerCreditBalance > 0 ? "This credit can be applied when the item is returned." : "This debit can be settled when the item is returned.")}
             </p>
+            {hasCreditUI && (
+              <>
+                {!showCreditSection && creditApplied === 0 && (
+                  <button
+                    type="button"
+                    onClick={onShowCreditSection}
+                    className="mt-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                  >
+                    Apply store credit
+                  </button>
+                )}
+                {showCreditSection && creditApplied === 0 && (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        value={tempCreditAmount}
+                        onChange={(e) => onTempCreditAmountChange?.(e.target.value)}
+                        placeholder="0"
+                        className="h-9 w-28"
+                        min={0}
+                        max={customerCreditBalance > 0 ? Math.min(customerCreditBalance, totalAfterDiscount) : undefined}
+                      />
+                      <Button type="button" size="sm" onClick={onApplyCredit} disabled={!tempCreditAmount || parseFloat(tempCreditAmount) <= 0}>
+                        Apply
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={onCancelCredit}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {creditApplied !== 0 && (
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                      {creditApplied > 0 ? "Store credit applied: -" : "Store debit applied: +"}
+                      {formatCurrency(Math.abs(creditApplied))}
+                    </span>
+                    {onEditCredit && (
+                      <button type="button" onClick={onEditCredit} className="text-primary hover:underline text-xs">
+                        Edit
+                      </button>
+                    )}
+                    {onRemoveCredit && (
+                      <button type="button" onClick={onRemoveCredit} className="text-muted-foreground hover:underline text-xs">
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}

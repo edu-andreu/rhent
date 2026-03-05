@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS public.audit_log (
 -- Append-only: no UPDATE or DELETE allowed via RLS
 ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "no_anon_direct_access" ON public.audit_log;
 CREATE POLICY "no_anon_direct_access"
   ON public.audit_log FOR ALL
   TO anon
@@ -111,6 +112,15 @@ BEGIN
     );
   END IF;
 
+  -- Only log when a user performed the action (skip system/migration)
+  IF v_actor IS NULL OR v_actor IN ('system', 'migration') THEN
+    IF TG_OP = 'DELETE' THEN
+      RETURN OLD;
+    ELSE
+      RETURN NEW;
+    END IF;
+  END IF;
+
   -- For UPDATE, compute which columns changed
   IF TG_OP = 'UPDATE' THEN
     v_changed := ARRAY[]::text[];
@@ -128,6 +138,11 @@ BEGIN
       ELSE
         RETURN NEW;
       END IF;
+    END IF;
+
+    -- Skip logging if only metadata columns changed (updated_at, updated_by)
+    IF v_changed <@ ARRAY['updated_at', 'updated_by']::text[] THEN
+      RETURN NEW;
     END IF;
   END IF;
 

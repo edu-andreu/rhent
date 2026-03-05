@@ -69,6 +69,7 @@
         "test:ui": "vitest --ui",
         "test:coverage": "vitest run --coverage",
         "test:ci": "vitest run --coverage --reporter=verbose",
-        "deploy:functions": "cp -r src/supabase/functions/server/* supabase/functions/make-server-918f1e54/ && cp supabase/functions/make-server-918f1e54/index.tsx supabase/functions/make-server-918f1e54/index.ts && supabase functions deploy make-server-918f1e54"
+        "sync:functions": "mkdir -p supabase/functions/make-server-918f1e54 && cp -r src/supabase/functions/server/* supabase/functions/make-server-918f1e54/ && cp supabase/functions/make-server-918f1e54/index.tsx supabase/functions/make-server-918f1e54/index.ts",
+        "deploy:functions": "npm run sync:functions && supabase functions deploy make-server-918f1e54"
     }
 }

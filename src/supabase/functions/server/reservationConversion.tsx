@@ -1,4 +1,5 @@
 import * as kv from "./kv_store.ts";
+import { validateConversionPayments } from "./helpers/conversionValidation.ts";
 
 const ALQUILADO_LOCATION_ID = "ca1c8acf-2c53-41bd-838a-35de029ac145";
 
@@ -156,15 +157,14 @@ export function registerReservationConversionRoutes(
       const totalPaymentsForOrder = parseFloat((totals as any)?.payments_total) || 0;
       const orderGrandTotal = parseFloat((totals as any)?.grand_total) || 0;
 
-      // Per-item payment total: sum of payments attributed to this rental_item_id (for "Paid for this item" in UI)
-      const { data: thisItemPayments } = await supabase
+      // Per-item payment totals
+      const { data: allItemPayments } = await supabase
         .from("payments")
-        .select("amount")
-        .eq("rental_item_id", rentalItemId);
-      const thisItemPaymentsTotal = (thisItemPayments || []).reduce(
-        (sum: number, p: any) => sum + (parseFloat(p.amount) || 0),
-        0
-      );
+        .select("rental_item_id, amount")
+        .eq("rental_id", rentalId);
+      const thisItemPaymentsTotal = (allItemPayments || [])
+        .filter((p: any) => p.rental_item_id === rentalItemId)
+        .reduce((sum: number, p: any) => sum + (parseFloat(p.amount) || 0), 0);
 
       // Calculate "other items" totals so the frontend can compute order-level values
       // even when this item's extra days or discount are edited
@@ -247,21 +247,27 @@ export function registerReservationConversionRoutes(
           rentalPeriodDays,
           basePrice,
         },
-        orderItems: (allItems || []).map((oi: any) => ({
-          id: oi.id,
-          itemId: oi.item_id,
-          name: oi.inventory_items?.name?.name || "Unknown",
-          sku: oi.inventory_items?.sku || "",
-          size: oi.inventory_items?.size?.size || "",
-          unitPrice: parseFloat(oi.unit_price) || 0,
-          extraDays: oi.extra_days || 0,
-          extraDaysAmount: parseFloat(oi.extra_days_amount) || 0,
-          discountAmount: parseFloat(oi.discount_amount) || 0,
-          status: oi.status,
-          startDate: oi.start_date,
-          endDate: oi.end_date,
-          deposit: parseFloat(oi.deposit_amount) || 0,
-        })),
+        orderItems: (allItems || []).map((oi: any) => {
+          const oiPayments = (allItemPayments || []).filter((p: any) => p.rental_item_id === oi.id);
+          const oiPaidTotal = oiPayments.reduce((s: number, p: any) => s + (parseFloat(p.amount) || 0), 0);
+          return {
+            id: oi.id,
+            itemId: oi.item_id,
+            name: oi.inventory_items?.name?.name || "Unknown",
+            sku: oi.inventory_items?.sku || "",
+            size: oi.inventory_items?.size?.size || "",
+            unitPrice: parseFloat(oi.unit_price) || 0,
+            extraDays: oi.extra_days || 0,
+            extraDaysAmount: parseFloat(oi.extra_days_amount) || 0,
+            discountAmount: parseFloat(oi.discount_amount) || 0,
+            status: oi.status,
+            isSale: oi.is_sale === true,
+            startDate: oi.start_date,
+            endDate: oi.end_date,
+            deposit: parseFloat(oi.deposit_amount) || 0,
+            paidTotal: oiPaidTotal,
+          };
+        }),
       });
     } catch (error: any) {
       console.log("Unexpected error fetching reservation checkout details:", error);
@@ -591,64 +597,32 @@ export function registerReservationConversionRoutes(
         0
       );
 
-      // Item-level balance and minimum
-      const itemBalanceDueBefore = Math.max(
-        0,
-        itemGrandTotal - existingItemPayments - creditAppliedAmount
-      );
       const isSaleItem = (currentItem as any).is_sale === true;
-      const itemDownPct = isSaleItem ? 100 : rentDownPct;
-      const itemMinimumRequired = Math.round(
-        itemGrandTotal * itemDownPct / 100
-      );
-      const additionalMinimumForItem = Math.max(
-        0,
-        itemMinimumRequired - existingItemPayments - creditAppliedAmount
-      );
+
+      const validationResult = validateConversionPayments({
+        grandTotal,
+        existingPayments,
+        newPaymentsTotal,
+        creditApplied: creditAppliedAmount,
+        itemGrandTotal,
+        existingItemPayments,
+        isSaleItem,
+        rentDownPct,
+        surplusHandling,
+      });
 
       console.log("💰 [CONVERT] Item-level validation:", {
         itemGrandTotal,
         existingItemPayments,
         creditAppliedAmount,
-        itemBalanceDueBefore,
-        itemMinimumRequired,
-        additionalMinimumForItem,
+        itemBalanceDue: validationResult.valid ? validationResult.itemBalanceDue : null,
+        additionalMinimum: validationResult.valid ? validationResult.additionalMinimum : null,
         newPaymentsTotal,
+        valid: validationResult.valid,
       });
 
-      // Per-item overpayment check
-      if (newPaymentsTotal > itemBalanceDueBefore + 0.01) {
-        return c.json(
-          {
-            error:
-              "Payment exceeds the balance due for this item. Overpayment is not allowed.",
-          },
-          400
-        );
-      }
-
-      // Per-item minimum requirement
-      if (newPaymentsTotal < additionalMinimumForItem - 0.01) {
-        return c.json(
-          {
-            error:
-              "Payment is below the minimum required for this item. Rental requires " +
-              itemDownPct +
-              "% upfront.",
-          },
-          400
-        );
-      }
-
-      // Light order-level safety: do not let payments + credit exceed order grand_total
-      if (existingPayments + newPaymentsTotal + creditAppliedAmount > grandTotal + 0.01) {
-        return c.json(
-          {
-            error:
-              "Payment + credit exceeds order grand total. Overpayment is not allowed.",
-          },
-          400
-        );
+      if (!validationResult.valid) {
+        return c.json({ error: validationResult.error }, 400);
       }
 
       const nowUTC = new Date();
@@ -928,6 +902,7 @@ export function registerReservationConversionRoutes(
                   .from("payments")
                   .insert({
                     rental_id: rentalId,
+                    rental_item_id: rentalItemId,
                     payment_method_id: refundMethodId,
                     method: refundMethodName,
                     amount: -surplusAmount,
@@ -1031,6 +1006,7 @@ export function registerReservationConversionRoutes(
                     .from("payments")
                     .insert({
                       rental_id: rentalId,
+                      rental_item_id: rentalItemId,
                       payment_method_id: (scMethod as any).id,
                       method: "store credit",
                       amount: -surplusAmount,

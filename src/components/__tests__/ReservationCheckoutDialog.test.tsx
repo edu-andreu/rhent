@@ -65,6 +65,8 @@ const defaultHookReturn = {
   showDrawerAlert: false,
   drawerAlertMessage: "",
   setShowDrawerAlert: vi.fn(),
+  orderItems: [],
+  currentRentalItemId: "",
 };
 
 describe("ReservationCheckoutDialog", () => {

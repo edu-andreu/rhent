@@ -139,8 +139,6 @@ export function useReservationCheckout({
   const isMultiItemOrder = (details?.financials.itemCount || 1) > 1;
   const initialDiscountPercent = details?.financials.discountPercent || 0;
   const rentDownPct = details?.config.rentDownPaymentPct || 50;
-  const otherItemsMinimum = details?.financials.otherItemsMinimum || 0;
-
   const calcResult = calculateCheckout({
     items: [{
       id: details?.rentalItemId || '',
@@ -166,10 +164,7 @@ export function useReservationCheckout({
   const hasBalance = balanceDue > 0.01;
   const surplus = Math.max(0, orderPaymentsTotal - orderGrandTotal);
   const hasSurplus = surplus > 0.01;
-  const thisItemMinimum = Math.round(itemTotal * rentDownPct / 100);
-  const orderMinimumTotal = thisItemMinimum + otherItemsMinimum;
-  const additionalMinimum = Math.max(0, orderMinimumTotal - orderPaymentsTotal - creditApplied);
-  const minimumRequired = Math.min(additionalMinimum, balanceDue);
+  const minimumRequired = Math.min(Math.round(balanceDue * rentDownPct / 100), balanceDue);
 
   // Shared payment allocations
   const payments = usePaymentAllocations({ balanceDue, minimumRequired });
@@ -359,6 +354,8 @@ export function useReservationCheckout({
     showDrawerAlert,
     setShowDrawerAlert,
     drawerAlertMessage,
+    orderItems: details?.orderItems || [],
+    currentRentalItemId: details?.rentalItemId || '',
     handleConfirm,
     handleClose,
   };

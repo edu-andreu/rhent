@@ -10,6 +10,7 @@ import { ReservationCheckoutCreditBanner } from "./reservation-checkout/Reservat
 import { ReservationCheckoutItemDetails } from "./reservation-checkout/ReservationCheckoutItemDetails";
 import { ReservationCheckoutDiscountSection } from "./reservation-checkout/ReservationCheckoutDiscountSection";
 import { ReservationCheckoutSurplusSection } from "./reservation-checkout/ReservationCheckoutSurplusSection";
+import { ReservationCheckoutTotals } from "./reservation-checkout/ReservationCheckoutTotals";
 import { ReservationCheckoutPaymentSection } from "./reservation-checkout/ReservationCheckoutPaymentSection";
 
 interface ReservationCheckoutDialogProps {
@@ -105,7 +106,6 @@ export function ReservationCheckoutDialog({
 
               <Separator />
 
-              {/* Payment Summary */}
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
@@ -131,83 +131,41 @@ export function ReservationCheckoutDialog({
                   onEditDiscount={hook.handleEditDiscount}
                 />
 
-                <div className="flex justify-between text-sm pt-2 border-t">
-                  <span className="text-muted-foreground font-medium">
-                    {hook.isMultiItemOrder ? "This item total" : "Order total"}
-                  </span>
-                  <span className="font-semibold text-base">{formatCurrency(hook.itemTotal)}</span>
-                </div>
-
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Paid for this item</span>
-                  <span className="font-semibold text-green-600 dark:text-green-400">
-                    {formatCurrency(hook.thisItemPaymentsTotal)}
-                  </span>
-                </div>
-
-                {hook.isMultiItemOrder && (
-                  <>
-                    <div className="flex justify-between text-sm pt-1 border-t border-dashed">
-                      <span className="text-muted-foreground text-xs">Other items in this order</span>
-                      <span className="text-muted-foreground text-xs">{formatCurrency(hook.otherItemsTotal)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground font-medium">Order total</span>
-                      <span className="font-semibold">{formatCurrency(hook.orderGrandTotal)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Already paid (order)</span>
-                      <span className="font-semibold text-green-600 dark:text-green-400">
-                        {formatCurrency(hook.alreadyPaid)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground font-medium">Balance due</span>
-                      <span className="font-semibold">{formatCurrency(hook.balanceDue)}</span>
-                    </div>
-                  </>
-                )}
-
-                {!hook.isMultiItemOrder && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground font-medium">Balance due</span>
-                    <span className="font-semibold">{formatCurrency(hook.balanceDue)}</span>
-                  </div>
-                )}
-
-                {hasSurplus && (
-                  <ReservationCheckoutSurplusSection
-                    surplus={hook.surplus}
-                    surplusHandling={hook.surplusHandling}
-                    refundMethodId={hook.refundMethodId}
-                    paymentMethods={hook.paymentMethods}
-                    formatCurrency={formatCurrency}
-                    onSurplusHandlingChange={hook.setSurplusHandling}
-                    onRefundMethodIdChange={hook.setRefundMethodId}
-                  />
-                )}
-
-                {hook.creditApplied !== 0 && !hasSurplus && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      {hook.creditApplied > 0 ? "Store Credit Applied" : "Store Debit Added"}
-                    </span>
-                    <span
-                      className={`font-semibold ${
-                        hook.creditApplied > 0 ? "text-green-600 dark:text-green-400" : "text-purple-600 dark:text-purple-400"
-                      }`}
-                    >
-                      {hook.creditApplied > 0 ? `-${formatCurrency(hook.creditApplied)}` : `+${formatCurrency(Math.abs(hook.creditApplied))}`}
-                    </span>
-                  </div>
-                )}
-
-                {hasBalance && hook.minimumRequired > 0 && hook.minimumRequired < hook.balanceDue && (
-                  <div className="text-xs text-muted-foreground">
-                    Minimum upfront payment: {formatCurrency(hook.minimumRequired)} ({hook.rentDownPct}% of total minus already paid{hook.creditApplied !== 0 ? " and credit applied" : ""})
+                {hook.discountAmount > 0 && (
+                  <div className="flex justify-between text-sm pt-2 border-t">
+                    <span className="text-muted-foreground font-medium">This item total</span>
+                    <span className="font-semibold text-base">{formatCurrency(hook.itemTotal)}</span>
                   </div>
                 )}
               </div>
+
+              <ReservationCheckoutTotals
+                itemTotal={hook.itemTotal}
+                thisItemPaymentsTotal={hook.thisItemPaymentsTotal}
+                orderGrandTotal={hook.orderGrandTotal}
+                alreadyPaid={hook.alreadyPaid}
+                balanceDue={hook.balanceDue}
+                isMultiItemOrder={hook.isMultiItemOrder}
+                creditApplied={hook.creditApplied}
+                minimumRequired={hook.minimumRequired}
+                rentDownPct={hook.rentDownPct}
+                hasSurplus={hasSurplus}
+                orderItems={hook.orderItems}
+                currentRentalItemId={hook.currentRentalItemId}
+                formatCurrency={formatCurrency}
+              />
+
+              {hasSurplus && (
+                <ReservationCheckoutSurplusSection
+                  surplus={hook.surplus}
+                  surplusHandling={hook.surplusHandling}
+                  refundMethodId={hook.refundMethodId}
+                  paymentMethods={hook.paymentMethods}
+                  formatCurrency={formatCurrency}
+                  onSurplusHandlingChange={hook.setSurplusHandling}
+                  onRefundMethodIdChange={hook.setRefundMethodId}
+                />
+              )}
 
               {hasBalance && (
                 <>

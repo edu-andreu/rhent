@@ -3,7 +3,6 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js";
 import * as kv from "../kv_store.ts";
 import { countBusinessDays, fetchHolidaysFromAPI, calculateExtraDays, getGMT3DateString } from "../helpers/calculations.ts";
 import { getCurrentOpenDrawer, validateDateNotWeekendOrHoliday } from "../helpers/validation.ts";
-import { allocatePaymentToItems } from "../helpers/paymentAllocation.ts";
 
 export function registerRentalsRoutes(app: Hono, supabase: SupabaseClient) {
 
@@ -783,28 +782,16 @@ payments:`, payments);
     const itemGrandTotal =
       itemUnitPrice + itemExtraDaysAmt + itemLateFeeAmt - itemDiscountAmt;
 
-    // Allocate existing order-level payments across items to get this item's \"already paid\"
-    let existingItemPayments = 0;
-    if ((allItemsForBalance && allItemsForBalance.length > 0) && existingPaymentsTotal !== 0) {
-      const itemsForAllocation = (allItemsForBalance as any[])
-        .map((oi: any) => {
-          const up = parseFloat(oi.unit_price) || 0;
-          const extra = parseFloat(oi.extra_days_amount) || 0;
-          const disc = parseFloat(oi.discount_amount) || 0;
-          const late = parseFloat(oi.late_fee_amount) || 0;
-          return { id: oi.id, subtotal: up + extra - disc + late };
-        })
-        .sort((a, b) => (a.id < b.id ? -1 : 1));
+    // Query actual per-item payments from the payments table (stored during checkout)
+    const { data: thisItemPayments } = await supabase
+      .from("payments")
+      .select("amount")
+      .eq("rental_item_id", rentalItemId);
 
-      const existingAllocations = allocatePaymentToItems(
-        existingPaymentsTotal,
-        itemsForAllocation
-      );
-      const allocForItem = existingAllocations.find(
-        (a) => a.rentalItemId === rentalItemId
-      );
-      if (allocForItem) existingItemPayments = allocForItem.amount;
-    }
+    const existingItemPayments = (thisItemPayments || []).reduce(
+      (sum: number, p: any) => sum + (parseFloat(p.amount) || 0),
+      0
+    );
 
     const itemBalanceBefore = Math.max(0, itemGrandTotal - existingItemPayments);
     const totalNewCoverageForItem = totalCoverage;
@@ -848,15 +835,20 @@ payments:`, payments);
       );
     }
 
-    // Light order-level safety: prevent payments + credit from exceeding order grand total
+    // Order-level: if total coverage exceeds grand total (surplus), require surplusHandling so it can be applied as credit/refund
     if (existingPaymentsTotal + totalCoverage > computedGrandTotal + 0.01) {
-      return c.json(
-        {
-          error:
-            "Payment + credit exceeds order grand total. Overpayment is not allowed.",
-        },
-        400
-      );
+      const surplusAmount = Math.round(existingPaymentsTotal + totalCoverage - computedGrandTotal);
+      if (!surplusHandling || typeof surplusHandling !== "object" || !surplusHandling.type || surplusHandling.amount == null) {
+        return c.json(
+          {
+            error:
+              "Payment + credit exceeds order grand total. Choose how to handle the surplus (store credit or refund) and try again.",
+          },
+          400
+        );
+      }
+      // Allow return to proceed; surplus will be handled in Step 5 below
+      console.log(`📊 [RETURN] Surplus detected: ${surplusAmount}. Will apply as ${surplusHandling.type}.`);
     }
 
     const nowUTC = new Date();
@@ -879,6 +871,7 @@ payments:`, payments);
 
     // Step 1: Create payment records for the balance (or debt settlement payments)
     const paymentIds: string[] = [];
+    const hasDebtSettlement = creditAmount < -0.01;
     if ((itemBalanceBefore > 0.01 || hasDebtSettlement) && payments && payments.length > 0) {
       for (const payment of payments) {
         const { data: paymentRecord, error: paymentError } = await supabase
@@ -1122,6 +1115,7 @@ payments:`, payments);
               .from("payments")
               .insert({
                 rental_id: rentalId,
+                rental_item_id: rentalItemId,
                 payment_method_id: refundMethodId,
                 method: refundMethodName,
                 amount: -surplusAmount,
@@ -1199,6 +1193,7 @@ payments:`, payments);
                 .from("payments")
                 .insert({
                   rental_id: rentalId,
+                  rental_item_id: rentalItemId,
                   payment_method_id: (scMethod as any).id,
                   method: "store credit",
                   amount: -surplusAmount,

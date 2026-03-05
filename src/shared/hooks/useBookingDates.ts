@@ -54,7 +54,7 @@ export interface UseBookingDatesReturn {
   conflictAlert: ConflictAlert;
   setConflictAlert: (alert: ConflictAlert) => void;
   dismissConflictAlert: () => void;
-  validateDates: (options?: { excludeReservationId?: string }) => boolean;
+  validateDates: (options?: { excludeReservationId?: string; excludeRentalItemId?: string }) => boolean;
   resetDates: () => void;
 }
 
@@ -293,7 +293,7 @@ export function useBookingDates({
   }, [startDate, rentalDays, holidays]);
 
   const validateDates = useCallback(
-    (options?: { excludeReservationId?: string }): boolean => {
+    (options?: { excludeReservationId?: string; excludeRentalItemId?: string }): boolean => {
       if (!startDate || !endDate) return false;
 
       if (isWeekend(startDate)) {
@@ -323,15 +323,20 @@ export function useBookingDates({
 
       const startDateStr = formatDateLocal(startDate);
       const endDateStr = formatDateLocal(endDate);
+      const conflictOptions =
+        options?.excludeReservationId || options?.excludeRentalItemId
+          ? {
+              ...(options.excludeReservationId && { excludeReservationId: options.excludeReservationId }),
+              ...(options.excludeRentalItemId && { excludeRentalItemId: options.excludeRentalItemId }),
+            }
+          : undefined;
       const conflictCheck = checkDateRangeConflictWithBuffers(
         startDateStr,
         endDateStr,
         serverReservedPeriods,
         blockPrevDays,
         blockNextDays,
-        options?.excludeReservationId
-          ? { excludeReservationId: options.excludeReservationId }
-          : undefined
+        conflictOptions
       );
 
       if (conflictCheck.hasConflict) {

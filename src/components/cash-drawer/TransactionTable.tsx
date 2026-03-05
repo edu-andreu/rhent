@@ -3,7 +3,7 @@ import { Pencil, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
-import { formatCurrency, isTransactionEditable, DrawerTransaction } from "./useCashDrawer";
+import { formatCurrency, isTransactionEditable, isCashOutTransaction, DrawerTransaction } from "./useCashDrawer";
 
 interface TransactionTableProps {
   transactions: DrawerTransaction[];
@@ -52,8 +52,8 @@ export function TransactionTable({
                 <TableCell className="max-w-[250px] truncate text-xs">
                   {t.notes || '-'}
                 </TableCell>
-                <TableCell className={`text-right font-medium ${t.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {t.amount > 0 ? '+' : ''}${formatCurrency(Math.abs(t.amount))}
+                <TableCell className={`text-right font-medium ${isCashOutTransaction(t) ? 'text-red-600' : t.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {!isCashOutTransaction(t) && t.amount > 0 ? '+' : ''}${formatCurrency(Math.abs(t.amount))}
                 </TableCell>
                 <TableCell className="px-2">
                   {isTransactionEditable(t) && (
