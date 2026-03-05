@@ -11,6 +11,26 @@ interface TransactionTableProps {
   onDeleteTransaction: (t: DrawerTransaction) => void;
 }
 
+function getDescriptionDisplay(t: DrawerTransaction) {
+  if (t.categoryName) {
+    if (t.cashOutType === 'payroll' && t.employeeName) {
+      return t.employeeName;
+    }
+    return t.categoryName;
+  }
+  return t.description || '-';
+}
+
+function getNotesDisplay(t: DrawerTransaction) {
+  if (t.cashOutType === 'payroll' && t.hoursWorked != null && t.hourlyRate != null) {
+    return `${t.hoursWorked}h × $${formatCurrency(t.hourlyRate)}/hr`;
+  }
+  if (t.categoryName && t.description) {
+    return t.description;
+  }
+  return t.notes || '-';
+}
+
 export function TransactionTable({
   transactions,
   onEditTransaction,
@@ -42,15 +62,22 @@ export function TransactionTable({
                   {new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </TableCell>
                 <TableCell>
-                  <Badge variant="outline" className="capitalize font-normal">
-                    {t.transactionType.replace(/_/g, ' ')}
-                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="outline" className="capitalize font-normal">
+                      {t.transactionType.replace(/_/g, ' ')}
+                    </Badge>
+                    {t.cashOutType === 'payroll' && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
+                        Payroll
+                      </Badge>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell className="max-w-[200px] truncate">
-                  {t.description || '-'}
+                  {getDescriptionDisplay(t)}
                 </TableCell>
                 <TableCell className="max-w-[250px] truncate text-xs">
-                  {t.notes || '-'}
+                  {getNotesDisplay(t)}
                 </TableCell>
                 <TableCell className={`text-right font-medium ${isCashOutTransaction(t) ? 'text-red-600' : t.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {!isCashOutTransaction(t) && t.amount > 0 ? '+' : ''}${formatCurrency(Math.abs(t.amount))}

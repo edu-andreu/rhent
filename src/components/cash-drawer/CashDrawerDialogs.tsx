@@ -1,12 +1,14 @@
 import React from "react";
-import { DollarSign, ArrowRight } from "lucide-react";
+import { DollarSign, ArrowRight, LogIn, LogOut, Receipt, Users } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../ui/alert-dialog";
-import { formatCurrency, DrawerSummary, DrawerTransaction } from "./useCashDrawer";
+import { formatCurrency, DrawerSummary, DrawerTransaction, TransactionCategory } from "./useCashDrawer";
+import { CategoryCombobox } from "./CategoryCombobox";
+import { TimePicker } from "./TimePicker";
 
 interface CashDrawerDialogsProps {
   loading: boolean;
@@ -37,6 +39,22 @@ interface CashDrawerDialogsProps {
   transactionNotes: string;
   setTransactionNotes: (val: string) => void;
   handleAddCashTransaction: () => void;
+
+  // Categories & payroll
+  categories: TransactionCategory[];
+  selectedCategoryId: string;
+  setSelectedCategoryId: (id: string) => void;
+  cashOutType: 'expense' | 'payroll';
+  setCashOutType: (type: 'expense' | 'payroll') => void;
+  employeeName: string;
+  setEmployeeName: (name: string) => void;
+  shiftStart: string;
+  setShiftStart: (time: string) => void;
+  shiftEnd: string;
+  setShiftEnd: (time: string) => void;
+  hourlyRate: number;
+  createCategory: (name: string, direction: 'in' | 'out') => Promise<TransactionCategory | null>;
+  resetTransactionDialog: () => void;
 
   // Edit opening cash dialog
   showEditOpeningCashDialog: boolean;
@@ -95,6 +113,20 @@ export function CashDrawerDialogs({
   transactionNotes,
   setTransactionNotes,
   handleAddCashTransaction,
+  categories,
+  selectedCategoryId,
+  setSelectedCategoryId,
+  cashOutType,
+  setCashOutType,
+  employeeName,
+  setEmployeeName,
+  shiftStart,
+  setShiftStart,
+  shiftEnd,
+  setShiftEnd,
+  hourlyRate,
+  createCategory,
+  resetTransactionDialog,
   showEditOpeningCashDialog,
   setShowEditOpeningCashDialog,
   editOpeningCashAmount,
@@ -238,7 +270,10 @@ export function CashDrawerDialogs({
       </Dialog>
 
       {/* Cash Transaction Dialog */}
-      <Dialog open={showCashTransactionDialog} onOpenChange={setShowCashTransactionDialog}>
+      <Dialog open={showCashTransactionDialog} onOpenChange={(open) => {
+        if (!open) resetTransactionDialog();
+        else setShowCashTransactionDialog(open);
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
@@ -250,35 +285,163 @@ export function CashDrawerDialogs({
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="transactionAmount">Amount *</Label>
-              <div className="relative">
-                <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="transactionAmount"
-                  type="number"
-                  step="1000"
-                  className="pl-8"
-                  placeholder="0"
-                  value={transactionAmount}
-                  onChange={(e) => setTransactionAmount(e.target.value)}
-                />
+            {/* Cash Out: Type toggle (Expense / Payroll) */}
+            {transactionType === 'out' && (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Type *</Label>
+                <div className="grid grid-cols-2 gap-2 p-1 bg-muted/50 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setCashOutType('expense')}
+                    className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all ${
+                      cashOutType === 'expense'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Receipt className="w-4 h-4" />
+                    <span>Expense</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCashOutType('payroll')}
+                    className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all ${
+                      cashOutType === 'payroll'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Users className="w-4 h-4" />
+                    <span>Payroll</span>
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="space-y-2">
-              <Label htmlFor="transactionNotes">Description *</Label>
-              <Textarea
-                id="transactionNotes"
-                placeholder="Details about this transaction..."
-                value={transactionNotes}
-                onChange={(e) => setTransactionNotes(e.target.value)}
-              />
-            </div>
+            {/* Payroll fields */}
+            {transactionType === 'out' && cashOutType === 'payroll' ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="employeeName">Employee Name *</Label>
+                  <Input
+                    id="employeeName"
+                    placeholder="Enter employee name..."
+                    value={employeeName}
+                    onChange={(e) => setEmployeeName(e.target.value)}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="shiftStart">Shift Start *</Label>
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-muted/50 text-muted-foreground">
+                        <LogIn className="h-4 w-4" aria-hidden />
+                      </div>
+                      <TimePicker
+                        id="shiftStart"
+                        value={shiftStart}
+                        onChange={setShiftStart}
+                        aria-label="Shift start"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="shiftEnd">Shift End *</Label>
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-muted/50 text-muted-foreground">
+                        <LogOut className="h-4 w-4" aria-hidden />
+                      </div>
+                      <TimePicker
+                        id="shiftEnd"
+                        value={shiftEnd}
+                        onChange={setShiftEnd}
+                        aria-label="Shift end"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {shiftStart && shiftEnd && shiftEnd > shiftStart && (() => {
+                  const [sh, sm] = shiftStart.split(':').map(Number);
+                  const [eh, em] = shiftEnd.split(':').map(Number);
+                  const hours = Math.round(((eh * 60 + em) - (sh * 60 + sm)) / 60 * 100) / 100;
+                  const total = hours * hourlyRate;
+                  return (
+                    <div className="bg-muted/50 rounded-lg p-3 border space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Hours</span>
+                        <span className="font-medium">{hours}h</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Rate</span>
+                        <span className="font-medium">${formatCurrency(hourlyRate)}/hr</span>
+                      </div>
+                      <div className="flex justify-between text-sm pt-1 border-t">
+                        <span className="font-medium">Total</span>
+                        <span className="font-bold text-red-600">${formatCurrency(total)}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div className="space-y-2">
+                  <Label htmlFor="transactionNotes">Description (optional)</Label>
+                  <Textarea
+                    id="transactionNotes"
+                    placeholder="Additional notes..."
+                    value={transactionNotes}
+                    onChange={(e) => setTransactionNotes(e.target.value)}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Category combobox (Expense / Cash-in) */}
+                <div className="space-y-2">
+                  <Label>Category *</Label>
+                  <CategoryCombobox
+                    categories={categories}
+                    selectedId={selectedCategoryId}
+                    onSelect={setSelectedCategoryId}
+                    onAddNew={(name) => createCategory(name, transactionType === 'in' ? 'in' : 'out')}
+                    direction={transactionType === 'in' ? 'in' : 'out'}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="transactionAmount">Amount *</Label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="transactionAmount"
+                      type="number"
+                      step="1000"
+                      className="pl-8"
+                      placeholder="0"
+                      value={transactionAmount}
+                      onChange={(e) => setTransactionAmount(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="transactionNotes">
+                    Description {categories.find(c => c.id === selectedCategoryId)?.name.toLowerCase() === 'otro' ? '*' : '(optional)'}
+                  </Label>
+                  <Textarea
+                    id="transactionNotes"
+                    placeholder="Details about this transaction..."
+                    value={transactionNotes}
+                    onChange={(e) => setTransactionNotes(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCashTransactionDialog(false)}>
+            <Button variant="outline" onClick={resetTransactionDialog}>
               Cancel
             </Button>
             <Button onClick={handleAddCashTransaction} disabled={loading}>

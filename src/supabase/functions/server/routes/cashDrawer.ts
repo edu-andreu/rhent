@@ -275,7 +275,7 @@ app.get("/make-server-918f1e54/drawer/current", async (c) => {
       });
     }
 
-    // Get all drawer transactions with payment details
+    // Get all drawer transactions with payment details and category
     const { data: transactions, error: txnError } = await supabase
       .from("drawer_transactions")
       .select(`
@@ -288,6 +288,16 @@ app.get("/make-server-918f1e54/drawer/current", async (c) => {
         created_at,
         created_by,
         payment_id,
+        category_id,
+        cash_out_type,
+        employee_name,
+        shift_start,
+        shift_end,
+        hours_worked,
+        hourly_rate,
+        drawer_transaction_categories (
+          name
+        ),
         payments (
           payment_method_id,
           rental_id,
@@ -432,6 +442,14 @@ app.get("/make-server-918f1e54/drawer/current", async (c) => {
         customerName,
         isCash,
         createdAt: txn.created_at,
+        categoryId: txn.category_id || null,
+        categoryName: (txn as any).drawer_transaction_categories?.name || null,
+        cashOutType: txn.cash_out_type || null,
+        employeeName: txn.employee_name || null,
+        shiftStart: txn.shift_start || null,
+        shiftEnd: txn.shift_end || null,
+        hoursWorked: txn.hours_worked ? parseFloat(txn.hours_worked) : null,
+        hourlyRate: txn.hourly_rate ? parseFloat(txn.hourly_rate) : null,
       };
     });
 
@@ -536,7 +554,7 @@ app.get("/make-server-918f1e54/drawer/:id/detail", async (c) => {
       return c.json({ error: "Drawer not found" }, 404);
     }
 
-    // Fetch transactions with payment details (same query as /drawer/current)
+    // Fetch transactions with payment details and category
     const { data: transactions, error: txnError } = await supabase
       .from("drawer_transactions")
       .select(`
@@ -549,6 +567,16 @@ app.get("/make-server-918f1e54/drawer/:id/detail", async (c) => {
         created_at,
         created_by,
         payment_id,
+        category_id,
+        cash_out_type,
+        employee_name,
+        shift_start,
+        shift_end,
+        hours_worked,
+        hourly_rate,
+        drawer_transaction_categories (
+          name
+        ),
         payments (
           payment_method_id,
           rental_id,
@@ -670,6 +698,14 @@ app.get("/make-server-918f1e54/drawer/:id/detail", async (c) => {
         customerName,
         isCash,
         createdAt: txn.created_at,
+        categoryId: txn.category_id || null,
+        categoryName: (txn as any).drawer_transaction_categories?.name || null,
+        cashOutType: txn.cash_out_type || null,
+        employeeName: txn.employee_name || null,
+        shiftStart: txn.shift_start || null,
+        shiftEnd: txn.shift_end || null,
+        hoursWorked: txn.hours_worked ? parseFloat(txn.hours_worked) : null,
+        hourlyRate: txn.hourly_rate ? parseFloat(txn.hourly_rate) : null,
       };
     });
 
@@ -692,24 +728,77 @@ app.get("/make-server-918f1e54/drawer/:id/detail", async (c) => {
   }
 });
 
+// GET /drawer/categories - Get transaction categories filtered by direction
+app.get("/make-server-918f1e54/drawer/categories", async (c) => {
+  try {
+    const direction = c.req.query("direction");
+
+    let query = supabase
+      .from("drawer_transaction_categories")
+      .select("id, name, direction")
+      .eq("is_active", true)
+      .order("name");
+
+    if (direction === "in" || direction === "out") {
+      query = query.eq("direction", direction);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.log("Error fetching transaction categories:", error);
+      return c.json({ error: `Failed to fetch categories: ${error.message}` }, 500);
+    }
+
+    return c.json({ categories: data || [] });
+  } catch (error: any) {
+    console.log("Error fetching transaction categories:", error);
+    return c.json({ error: `Failed to fetch categories: ${error.message}` }, 500);
+  }
+});
+
+// POST /drawer/categories - Create a new transaction category
+app.post("/make-server-918f1e54/drawer/categories", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { name, direction } = body;
+
+    if (!name || name.trim() === "") {
+      return c.json({ error: "Category name is required" }, 400);
+    }
+
+    if (direction !== "in" && direction !== "out") {
+      return c.json({ error: "Direction must be 'in' or 'out'" }, 400);
+    }
+
+    const { data: category, error } = await supabase
+      .from("drawer_transaction_categories")
+      .insert({ name: name.trim(), direction })
+      .select("id, name, direction")
+      .single();
+
+    if (error) {
+      if (error.code === "23505") {
+        return c.json({ error: `Category "${name.trim()}" already exists for ${direction}` }, 409);
+      }
+      console.log("Error creating transaction category:", error);
+      return c.json({ error: `Failed to create category: ${error.message}` }, 500);
+    }
+
+    console.log(`✅ Transaction category created: "${category.name}" (${category.direction})`);
+
+    return c.json({ category }, 201);
+  } catch (error: any) {
+    console.log("Error creating transaction category:", error);
+    return c.json({ error: `Failed to create category: ${error.message}` }, 500);
+  }
+});
+
 // POST /drawer/transaction - Add manual cash in/out transaction
 app.post("/make-server-918f1e54/drawer/transaction", async (c) => {
   try {
     const body = await c.req.json();
-    const { amount, category, notes } = body;
-
-    if (amount === undefined || amount === null) {
-      return c.json({ error: "Amount is required" }, 400);
-    }
-
-    if (!notes || notes.trim() === "") {
-      return c.json({ error: "Description is required" }, 400);
-    }
-
-    const amountNum = parseFloat(amount);
-    if (isNaN(amountNum)) {
-      return c.json({ error: "Amount must be a valid number" }, 400);
-    }
+    const { amount, category, notes, category_id, cash_out_type, employee_name, shift_start, shift_end } = body;
 
     // Get current open drawer
     const openDrawer = await getCurrentOpenDrawer(supabase);
@@ -717,7 +806,97 @@ app.post("/make-server-918f1e54/drawer/transaction", async (c) => {
       return c.json({ error: "No open cash drawer found. Please open a drawer first." }, 400);
     }
 
-    // Create drawer transaction
+    // Look up category to check if it's "Otro" (description required)
+    let categoryName: string | null = null;
+    if (category_id) {
+      const { data: cat } = await supabase
+        .from("drawer_transaction_categories")
+        .select("name")
+        .eq("id", category_id)
+        .single();
+      categoryName = cat?.name || null;
+    }
+
+    // Payroll transaction: compute amount from shift times and hourly wage
+    if (cash_out_type === "payroll") {
+      if (!shift_start || !shift_end) {
+        return c.json({ error: "Shift start and end times are required for payroll" }, 400);
+      }
+      if (!employee_name || employee_name.trim() === "") {
+        return c.json({ error: "Employee name is required for payroll" }, 400);
+      }
+
+      const start = new Date(shift_start);
+      const end = new Date(shift_end);
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return c.json({ error: "Invalid shift start or end time" }, 400);
+      }
+      if (end <= start) {
+        return c.json({ error: "Shift end must be after shift start" }, 400);
+      }
+
+      const hoursWorked = Math.round(((end.getTime() - start.getTime()) / 3600000) * 100) / 100;
+
+      // Fetch hourly rate from configuration
+      const { data: wageKv } = await supabase
+        .from("kv_store_918f1e54")
+        .select("value")
+        .eq("key", "config_storeAssistant_wageByHour")
+        .single();
+
+      const hourlyRate = parseFloat(wageKv?.value || "5000");
+      const payrollAmount = -(hoursWorked * hourlyRate);
+
+      const descParts = [`Payroll: ${employee_name.trim()}`];
+      if (notes && notes.trim()) descParts.push(notes.trim());
+
+      const { data: transaction, error: txnError } = await supabase
+        .from("drawer_transactions")
+        .insert({
+          drawer_txn_id: crypto.randomUUID(),
+          drawer_id: openDrawer.drawer_id,
+          payment_id: null,
+          txn_type: "cash_out",
+          method: "Cash",
+          amount: payrollAmount,
+          description: descParts.join(" - "),
+          reference: null,
+          created_by: "user",
+          category_id: null,
+          cash_out_type: "payroll",
+          employee_name: employee_name.trim(),
+          shift_start: start.toISOString(),
+          shift_end: end.toISOString(),
+          hours_worked: hoursWorked,
+          hourly_rate: hourlyRate,
+        })
+        .select()
+        .single();
+
+      if (txnError) {
+        console.log("Error creating payroll transaction:", txnError);
+        return c.json({ error: `Failed to create transaction: ${txnError.message}` }, 500);
+      }
+
+      console.log(`✅ Payroll transaction created: ${employee_name.trim()} ${hoursWorked}h × $${hourlyRate} = $${Math.abs(payrollAmount)}`);
+      return c.json({ transaction }, 201);
+    }
+
+    // Expense / Cash-in transaction
+    if (amount === undefined || amount === null) {
+      return c.json({ error: "Amount is required" }, 400);
+    }
+
+    const isOtro = categoryName?.toLowerCase() === "otro";
+    if (isOtro && (!notes || notes.trim() === "")) {
+      return c.json({ error: "Description is required when category is 'Otro'" }, 400);
+    }
+
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum)) {
+      return c.json({ error: "Amount must be a valid number" }, 400);
+    }
+
     const { data: transaction, error: txnError } = await supabase
       .from("drawer_transactions")
       .insert({
@@ -727,9 +906,11 @@ app.post("/make-server-918f1e54/drawer/transaction", async (c) => {
         txn_type: amountNum > 0 ? "cash_in" : "cash_out",
         method: "Cash",
         amount: amountNum,
-        description: notes,
+        description: notes?.trim() || null,
         reference: null,
         created_by: "user",
+        category_id: category_id || null,
+        cash_out_type: amountNum < 0 ? (cash_out_type || "expense") : null,
       })
       .select()
       .single();
@@ -827,20 +1008,7 @@ app.put("/make-server-918f1e54/drawer/transaction/:id", async (c) => {
   try {
     const transactionId = c.req.param("id");
     const body = await c.req.json();
-    const { amount, notes } = body;
-
-    if (amount === undefined || amount === null) {
-      return c.json({ error: "Amount is required" }, 400);
-    }
-
-    if (!notes || notes.trim() === "") {
-      return c.json({ error: "Description is required" }, 400);
-    }
-
-    const amountNum = parseFloat(amount);
-    if (isNaN(amountNum)) {
-      return c.json({ error: "Amount must be a valid number" }, 400);
-    }
+    const { amount, notes, category_id, cash_out_type, employee_name, shift_start, shift_end } = body;
 
     // Get current open drawer
     const openDrawer = await getCurrentOpenDrawer(supabase);
@@ -861,7 +1029,6 @@ app.put("/make-server-918f1e54/drawer/transaction/:id", async (c) => {
       return c.json({ error: "Transaction not found in current drawer" }, 404);
     }
 
-    // Only allow editing manual cash_in/cash_out transactions (no payment_id)
     if (!['cash_in', 'cash_out', 'in', 'out'].includes(existingTxn.txn_type)) {
       return c.json({ error: "Only manual cash in/out transactions can be edited" }, 403);
     }
@@ -870,18 +1037,107 @@ app.put("/make-server-918f1e54/drawer/transaction/:id", async (c) => {
       return c.json({ error: "System-generated transactions cannot be edited" }, 403);
     }
 
-    const oldAmount = parseFloat(existingTxn.amount) || 0;
+    // Look up category to check if description is required
+    let categoryName: string | null = null;
+    const effectiveCategoryId = category_id !== undefined ? category_id : existingTxn.category_id;
+    if (effectiveCategoryId) {
+      const { data: cat } = await supabase
+        .from("drawer_transaction_categories")
+        .select("name")
+        .eq("id", effectiveCategoryId)
+        .single();
+      categoryName = cat?.name || null;
+    }
 
-    // Determine the new txn_type based on the sign of the amount
+    const isOtro = categoryName?.toLowerCase() === "otro";
+    if (isOtro && (!notes || notes.trim() === "")) {
+      return c.json({ error: "Description is required when category is 'Otro'" }, 400);
+    }
+
+    const effectiveCashOutType = cash_out_type !== undefined ? cash_out_type : existingTxn.cash_out_type;
+
+    // Handle payroll edit
+    if (effectiveCashOutType === "payroll") {
+      const effectiveStart = shift_start || existingTxn.shift_start;
+      const effectiveEnd = shift_end || existingTxn.shift_end;
+      const effectiveEmployee = employee_name !== undefined ? employee_name : existingTxn.employee_name;
+
+      if (!effectiveStart || !effectiveEnd) {
+        return c.json({ error: "Shift start and end times are required for payroll" }, 400);
+      }
+      if (!effectiveEmployee || effectiveEmployee.trim() === "") {
+        return c.json({ error: "Employee name is required for payroll" }, 400);
+      }
+
+      const start = new Date(effectiveStart);
+      const end = new Date(effectiveEnd);
+      const hoursWorked = Math.round(((end.getTime() - start.getTime()) / 3600000) * 100) / 100;
+
+      const { data: wageKv } = await supabase
+        .from("kv_store_918f1e54")
+        .select("value")
+        .eq("key", "config_storeAssistant_wageByHour")
+        .single();
+
+      const hourlyRate = parseFloat(wageKv?.value || "5000");
+      const payrollAmount = -(hoursWorked * hourlyRate);
+
+      const descParts = [`Payroll: ${effectiveEmployee.trim()}`];
+      if (notes && notes.trim()) descParts.push(notes.trim());
+
+      const { data: updatedTxn, error: updateError } = await supabase
+        .from("drawer_transactions")
+        .update({
+          amount: payrollAmount,
+          txn_type: "cash_out",
+          description: descParts.join(" - "),
+          cash_out_type: "payroll",
+          employee_name: effectiveEmployee.trim(),
+          shift_start: start.toISOString(),
+          shift_end: end.toISOString(),
+          hours_worked: hoursWorked,
+          hourly_rate: hourlyRate,
+          category_id: null,
+        })
+        .eq("drawer_txn_id", transactionId)
+        .select("*")
+        .single();
+
+      if (updateError) {
+        console.log("Error updating payroll transaction:", updateError);
+        return c.json({ error: `Failed to update transaction: ${updateError.message}` }, 500);
+      }
+
+      console.log(`✅ Payroll transaction ${transactionId} updated: ${effectiveEmployee} ${hoursWorked}h`);
+      return c.json({ transaction: updatedTxn });
+    }
+
+    // Expense / cash-in edit
+    if (amount === undefined || amount === null) {
+      return c.json({ error: "Amount is required" }, 400);
+    }
+
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum)) {
+      return c.json({ error: "Amount must be a valid number" }, 400);
+    }
+
+    const oldAmount = parseFloat(existingTxn.amount) || 0;
     const newTxnType = amountNum >= 0 ? "cash_in" : "cash_out";
 
-    // Update the transaction
     const { data: updatedTxn, error: updateError } = await supabase
       .from("drawer_transactions")
       .update({
         amount: amountNum,
         txn_type: newTxnType,
-        description: notes.trim(),
+        description: notes?.trim() || null,
+        category_id: effectiveCategoryId || null,
+        cash_out_type: amountNum < 0 ? (effectiveCashOutType || "expense") : null,
+        employee_name: null,
+        shift_start: null,
+        shift_end: null,
+        hours_worked: null,
+        hourly_rate: null,
       })
       .eq("drawer_txn_id", transactionId)
       .select("*")
@@ -891,8 +1147,6 @@ app.put("/make-server-918f1e54/drawer/transaction/:id", async (c) => {
       console.log("Error updating drawer transaction:", updateError);
       return c.json({ error: `Failed to update transaction: ${updateError.message}` }, 500);
     }
-
-    // Audit log is handled automatically by DB trigger on drawer_transactions UPDATE
 
     console.log(`✅ Drawer transaction ${transactionId} updated: amount $${Math.round(Math.abs(oldAmount))} → $${Math.round(Math.abs(amountNum))}, type: ${existingTxn.txn_type} → ${newTxnType}`);
 

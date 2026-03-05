@@ -35,6 +35,20 @@ export interface DrawerTransaction {
   paymentMethod: string;
   notes?: string;
   description?: string;
+  categoryId?: string | null;
+  categoryName?: string | null;
+  cashOutType?: 'expense' | 'payroll' | null;
+  employeeName?: string | null;
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
+  hoursWorked?: number | null;
+  hourlyRate?: number | null;
+}
+
+export interface TransactionCategory {
+  id: string;
+  name: string;
+  direction: 'in' | 'out';
 }
 
 export interface DrawerHistoryItem {
@@ -143,6 +157,15 @@ export function useCashDrawer() {
   const [transactionCategory, setTransactionCategory] = useState('');
   const [transactionNotes, setTransactionNotes] = useState('');
 
+  // Categories & payroll
+  const [categories, setCategories] = useState<TransactionCategory[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [cashOutType, setCashOutType] = useState<'expense' | 'payroll'>('expense');
+  const [employeeName, setEmployeeName] = useState('');
+  const [shiftStart, setShiftStart] = useState('');
+  const [shiftEnd, setShiftEnd] = useState('');
+  const [hourlyRate, setHourlyRate] = useState(5000);
+
   // Edit Opening Cash Dialog
   const [showEditOpeningCashDialog, setShowEditOpeningCashDialog] = useState(false);
   const [editOpeningCashAmount, setEditOpeningCashAmount] = useState('');
@@ -167,6 +190,39 @@ export function useCashDrawer() {
   // Audit trail
   const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
   const [showAuditLog, setShowAuditLog] = useState(false);
+
+  const fetchCategories = async (direction: 'in' | 'out') => {
+    try {
+      const data = await getFunction<Record<string, any>>(`drawer/categories?direction=${direction}`);
+      setCategories(data.categories || []);
+    } catch (err) {
+      console.error('Error fetching categories:', err);
+    }
+  };
+
+  const createCategory = async (name: string, direction: 'in' | 'out'): Promise<TransactionCategory | null> => {
+    try {
+      const data = await postFunction<Record<string, any>>("drawer/categories", { name, direction });
+      if (data.category) {
+        await fetchCategories(direction);
+        return data.category;
+      }
+      return null;
+    } catch (err) {
+      handleApiError(err, "category creation", "Failed to create category");
+      return null;
+    }
+  };
+
+  const fetchHourlyRate = async () => {
+    try {
+      const data = await getFunction<Record<string, any>>("get-configuration");
+      const rate = parseFloat(data.config?.storeAssistantWageByHour || "5000");
+      setHourlyRate(rate);
+    } catch (err) {
+      console.error('Error fetching hourly rate:', err);
+    }
+  };
 
   const fetchAuditLog = async (drawerId: string) => {
     try {
@@ -312,8 +368,56 @@ export function useCashDrawer() {
   };
 
   const handleAddCashTransaction = async () => {
-    if (!transactionAmount || !transactionNotes) {
-      showAlert("Missing Information", "Please fill in amount and description");
+    // Payroll path
+    if (transactionType === 'out' && cashOutType === 'payroll') {
+      if (!employeeName.trim()) {
+        showAlert("Missing Information", "Please enter the employee name");
+        return;
+      }
+      if (!shiftStart || !shiftEnd) {
+        showAlert("Missing Information", "Please enter shift start and end times");
+        return;
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      const startISO = new Date(`${today}T${shiftStart}`).toISOString();
+      const endISO = new Date(`${today}T${shiftEnd}`).toISOString();
+
+      setLoading(true);
+      try {
+        await postFunction("drawer/transaction", {
+          cash_out_type: 'payroll',
+          employee_name: employeeName,
+          shift_start: startISO,
+          shift_end: endISO,
+          notes: transactionNotes || undefined,
+        });
+
+        resetTransactionDialog();
+        await fetchCurrentDrawer();
+      } catch (err) {
+        handleApiError(err, "payroll transaction", "Failed to add payroll transaction");
+        showAlert("Error", err instanceof Error ? err.message : "Failed to add payroll transaction");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Expense / Cash-in path
+    if (!selectedCategoryId) {
+      showAlert("Missing Information", "Please select a category");
+      return;
+    }
+    if (!transactionAmount) {
+      showAlert("Missing Information", "Please enter an amount");
+      return;
+    }
+
+    const selectedCategory = categories.find(c => c.id === selectedCategoryId);
+    const isOtro = selectedCategory?.name.toLowerCase() === 'otro';
+    if (isOtro && !transactionNotes.trim()) {
+      showAlert("Missing Information", "Description is required when category is 'Otro'");
       return;
     }
 
@@ -326,12 +430,12 @@ export function useCashDrawer() {
       await postFunction("drawer/transaction", {
         amount,
         category: transactionType === 'in' ? 'cash_in' : 'cash_out',
-        notes: transactionNotes,
+        category_id: selectedCategoryId,
+        cash_out_type: transactionType === 'out' ? 'expense' : undefined,
+        notes: transactionNotes || undefined,
       });
 
-      setShowCashTransactionDialog(false);
-      setTransactionAmount('');
-      setTransactionNotes('');
+      resetTransactionDialog();
       await fetchCurrentDrawer();
     } catch (err) {
       handleApiError(err, "cash transaction", "Failed to add cash transaction");
@@ -339,6 +443,17 @@ export function useCashDrawer() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const resetTransactionDialog = () => {
+    setShowCashTransactionDialog(false);
+    setTransactionAmount('');
+    setTransactionNotes('');
+    setSelectedCategoryId('');
+    setCashOutType('expense');
+    setEmployeeName('');
+    setShiftStart('');
+    setShiftEnd('');
   };
 
   const handleEditOpeningCash = async () => {
@@ -418,7 +533,7 @@ export function useCashDrawer() {
 
   useEffect(() => {
     const loadInitialData = async () => {
-      await Promise.all([fetchCurrentDrawer(), fetchDrawerHistory()]);
+      await Promise.all([fetchCurrentDrawer(), fetchDrawerHistory(), fetchHourlyRate()]);
       setInitialLoading(false);
     };
     loadInitialData();
@@ -467,6 +582,23 @@ export function useCashDrawer() {
     setTransactionCategory,
     transactionNotes,
     setTransactionNotes,
+
+    // Categories & payroll
+    categories,
+    selectedCategoryId,
+    setSelectedCategoryId,
+    cashOutType,
+    setCashOutType,
+    employeeName,
+    setEmployeeName,
+    shiftStart,
+    setShiftStart,
+    shiftEnd,
+    setShiftEnd,
+    hourlyRate,
+    fetchCategories,
+    createCategory,
+    resetTransactionDialog,
 
     // Edit opening cash dialog
     showEditOpeningCashDialog,

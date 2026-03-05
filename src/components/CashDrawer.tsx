@@ -72,10 +72,12 @@ export function CashDrawer() {
                 }}
                 onCashIn={() => {
                   drawer.setTransactionType('in');
+                  drawer.fetchCategories('in');
                   drawer.setShowCashTransactionDialog(true);
                 }}
                 onCashOut={() => {
                   drawer.setTransactionType('out');
+                  drawer.fetchCategories('out');
                   drawer.setShowCashTransactionDialog(true);
                 }}
                 onEditOpeningCash={(currentAmount) => {
@@ -138,6 +140,20 @@ export function CashDrawer() {
         transactionNotes={drawer.transactionNotes}
         setTransactionNotes={drawer.setTransactionNotes}
         handleAddCashTransaction={drawer.handleAddCashTransaction}
+        categories={drawer.categories}
+        selectedCategoryId={drawer.selectedCategoryId}
+        setSelectedCategoryId={drawer.setSelectedCategoryId}
+        cashOutType={drawer.cashOutType}
+        setCashOutType={drawer.setCashOutType}
+        employeeName={drawer.employeeName}
+        setEmployeeName={drawer.setEmployeeName}
+        shiftStart={drawer.shiftStart}
+        setShiftStart={drawer.setShiftStart}
+        shiftEnd={drawer.shiftEnd}
+        setShiftEnd={drawer.setShiftEnd}
+        hourlyRate={drawer.hourlyRate}
+        createCategory={drawer.createCategory}
+        resetTransactionDialog={drawer.resetTransactionDialog}
         showEditOpeningCashDialog={drawer.showEditOpeningCashDialog}
         setShowEditOpeningCashDialog={drawer.setShowEditOpeningCashDialog}
         editOpeningCashAmount={drawer.editOpeningCashAmount}
