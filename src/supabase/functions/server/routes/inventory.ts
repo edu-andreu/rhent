@@ -7,6 +7,19 @@ import { roundToNearestThousand } from "../priceUtils.ts";
 export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const getCheckedOutItemIds = async () => {
+    const { data, error } = await supabase
+      .from("rental_items")
+      .select("item_id")
+      .eq("status", "checked_out");
+
+    if (error) {
+      console.log("Warning: Could not fetch checked out item ids:", error.message);
+      return new Set<string>();
+    }
+
+    return new Set((data || []).map((row) => row.item_id).filter(Boolean));
+  };
 
   // GET all inventory items
   app.get("/make-server-918f1e54/inventory-items", async (c) => {
@@ -54,9 +67,11 @@ export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
         console.log("Warning: Could not fetch rental counts for popularity sorting:", rentalCountError.message);
       }
 
+      const checkedOutItemIds = await getCheckedOutItemIds();
       const bucketName = 'photos';
 
       const dresses = await Promise.all(items.map(async (item) => {
+        const isCheckedOut = checkedOutItemIds.has(item.id);
         let imageUrl = "";
         const { data: files } = await supabase.storage
           .from(bucketName)
@@ -90,11 +105,11 @@ export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
           categoryType: item.category?.category?.toLowerCase() === 'extras' ? 'service' : 'product',
           type: item.subcategory?.subcategory || "",
           brand: item.brand?.brand || "",
-          available: item.status === "On",
-          status: item.location?.location || "",
+          available: item.status === "On" && !isCheckedOut,
+          status: isCheckedOut ? "Rented" : item.location?.location || "",
           locationId: item.location_id,
           statusBadgeClass: item.location?.badge_class || "text-bg-light",
-          availabilityStatus: item.location?.availability_status || "",
+          availabilityStatus: isCheckedOut ? "unavailable" : item.location?.availability_status || "",
           rentalCount: rentalCountMap[item.id] || 0,
           isForSale: item.is_for_sale || false,
           salePrice: item.sale_price ? parseFloat(item.sale_price) : null,
@@ -143,6 +158,8 @@ export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
         return c.json({ error: "Item not found" }, 404);
       }
 
+      const checkedOutItemIds = await getCheckedOutItemIds();
+      const isCheckedOut = checkedOutItemIds.has(item.id);
       const bucketName = 'photos';
       let imageUrl = "";
       const { data: files } = await supabase.storage.from(bucketName).list('', { search: item.id });
@@ -169,10 +186,10 @@ export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
         colors: colors, colorId: item.color_id,
         pricePerDay: parseFloat(item.curr_price) || 0,
         imageUrl: imageUrl,
-        status: item.location?.location || "", locationId: item.location_id,
+        status: isCheckedOut ? "Rented" : item.location?.location || "", locationId: item.location_id,
         statusBadgeClass: item.location?.badge_class || "text-bg-light",
-        available: item.status === "On",
-        availabilityStatus: item.location?.availability_status || "",
+        available: item.status === "On" && !isCheckedOut,
+        availabilityStatus: isCheckedOut ? "unavailable" : item.location?.availability_status || "",
         isForSale: item.is_for_sale || false,
         salePrice: item.sale_price ? parseFloat(item.sale_price) : null,
         stockQuantity: item.stock_quantity ?? 1,
@@ -353,6 +370,8 @@ export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
       const itemColors = fullItem.inventory_item_colors && fullItem.inventory_item_colors.length > 0
         ? fullItem.inventory_item_colors.map(ic => ic.color?.color).filter(Boolean)
         : [fullItem.color?.color].filter(Boolean);
+      const checkedOutItemIds = await getCheckedOutItemIds();
+      const isCheckedOut = checkedOutItemIds.has(fullItem.id);
 
       const dressResponse = {
         id: fullItem.id, name: fullItem.name?.name || fullItem.sku || "Unnamed Item",
@@ -362,9 +381,10 @@ export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
         category: fullItem.category?.category || "",
         categoryType: fullItem.category?.category?.toLowerCase() === 'extras' ? 'service' : 'product',
         type: fullItem.subcategory?.subcategory || "", brand: fullItem.brand?.brand || "",
-        available: fullItem.status === "On", status: fullItem.location?.location || "",
+        available: fullItem.status === "On" && !isCheckedOut,
+        status: isCheckedOut ? "Rented" : fullItem.location?.location || "",
         statusBadgeClass: fullItem.location?.badge_class || "text-bg-light",
-        availabilityStatus: fullItem.location?.availability_status || "",
+        availabilityStatus: isCheckedOut ? "unavailable" : fullItem.location?.availability_status || "",
         isForSale: fullItem.is_for_sale || false,
         salePrice: fullItem.sale_price ? parseFloat(fullItem.sale_price) : null,
         stockQuantity: fullItem.stock_quantity ?? 1,
@@ -470,6 +490,8 @@ export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
       const itemColors = fullItem.inventory_item_colors && fullItem.inventory_item_colors.length > 0
         ? fullItem.inventory_item_colors.map(ic => ic.color?.color).filter(Boolean)
         : [fullItem.color?.color].filter(Boolean);
+      const checkedOutItemIds = await getCheckedOutItemIds();
+      const isCheckedOut = checkedOutItemIds.has(fullItem.id);
 
       const dressResponse = {
         id: fullItem.id, name: fullItem.name?.name || fullItem.sku || "Unnamed Item",
@@ -479,10 +501,11 @@ export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
         category: fullItem.category?.category || "",
         categoryType: fullItem.category?.category?.toLowerCase() === 'extras' ? 'service' : 'product',
         type: fullItem.subcategory?.subcategory || "", brand: fullItem.brand?.brand || "",
-        available: fullItem.status === "On", status: fullItem.location?.location || "",
+        available: fullItem.status === "On" && !isCheckedOut,
+        status: isCheckedOut ? "Rented" : fullItem.location?.location || "",
         locationId: fullItem.location_id,
         statusBadgeClass: fullItem.location?.badge_class || "text-bg-light",
-        availabilityStatus: fullItem.location?.availability_status || "",
+        availabilityStatus: isCheckedOut ? "unavailable" : fullItem.location?.availability_status || "",
         isForSale: fullItem.is_for_sale || false,
         salePrice: fullItem.sale_price ? parseFloat(fullItem.sale_price) : null,
         stockQuantity: fullItem.stock_quantity ?? 1,
