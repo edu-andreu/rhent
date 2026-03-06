@@ -3,8 +3,10 @@ import { AppHeader } from "./components/AppHeader";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Toaster } from "sonner";
 import { AppStateProvider, useAppState } from "./providers/AppStateProvider";
+import { AuthProvider, useAuth } from "./providers/AuthProvider";
 import { DialogProvider, useDialog } from "./providers/DialogProvider";
 import { TabRouter } from "./components/TabRouter";
+import { LoginPage } from "./components/LoginPage";
 import { useCatalog } from "./features/catalog/useCatalog";
 import { useCustomers } from "./features/customers/useCustomers";
 import { useRentals } from "./features/rentals/useRentals";
@@ -179,12 +181,37 @@ function AppInner({
   );
 }
 
+function AuthGate() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-3">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  return (
+    <AppStateProvider>
+      <AppContent />
+    </AppStateProvider>
+  );
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
-      <AppStateProvider>
-        <AppContent />
-      </AppStateProvider>
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
     </ErrorBoundary>
   );
 }

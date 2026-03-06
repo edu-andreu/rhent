@@ -1,5 +1,6 @@
 import type { Hono } from "npm:hono";
 import type { SupabaseClient } from "npm:@supabase/supabase-js";
+import { getCurrentUserDisplay } from "../helpers/auth.ts";
 import * as kv from "../kv_store.ts";
 import { roundToNearestThousand } from "../priceUtils.ts";
 
@@ -303,7 +304,7 @@ export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
           stock_quantity: isSaleItem && isStockTracked ? (stockQuantity ?? 1) : 1,
           is_stock_tracked: isSaleItem ? (isStockTracked || false) : false,
           low_stock_threshold: isSaleItem && isStockTracked ? (lowStockThreshold || 5) : 5,
-          status: "On", created_by: "user", updated_by: "user",
+          status: "On", created_by: getCurrentUserDisplay(c), updated_by: getCurrentUserDisplay(c),
         })
         .select()
         .single();
@@ -405,7 +406,7 @@ export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
         return c.json({ error: "Cannot change item type (isForSale) after creation. Create a new item instead." }, 400);
       }
 
-      const updateFields: Record<string, any> = { updated_by: "user" };
+      const updateFields: Record<string, any> = { updated_by: getCurrentUserDisplay(c) };
       if (nameId !== undefined) updateFields.name_id = nameId || null;
       if (categoryId !== undefined) updateFields.category_id = categoryId || null;
       if (subcategoryId !== undefined) updateFields.subcategory_id = subcategoryId || null;

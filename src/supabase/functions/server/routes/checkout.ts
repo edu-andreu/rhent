@@ -1,5 +1,6 @@
 import type { Hono } from "npm:hono";
 import type { SupabaseClient } from "npm:@supabase/supabase-js";
+import { getCurrentUserDisplay } from "../helpers/auth.ts";
 import * as kv from "../kv_store.ts";
 import { getCurrentOpenDrawer } from "../helpers/validation.ts";
 import { getGMT3DateString } from "../helpers/calculations.ts";
@@ -33,6 +34,8 @@ app.post("/make-server-918f1e54/checkout", async (c) => {
     if (!customerId || typeof customerId !== "string" || customerId.trim() === "") {
       return c.json({ error: "Customer ID is required" }, 400);
     }
+
+    const currentUser = getCurrentUserDisplay(c);
 
     // DRAWER VALIDATION - Only check if cash payment is being used
     let openDrawer: any = null;
@@ -223,7 +226,7 @@ app.post("/make-server-918f1e54/checkout", async (c) => {
         channel: "POS",
         discount_percent: discountPercent,
         notes: discountNotes,
-        created_by: "system",
+        created_by: currentUser,
       })
       .select("id")
       .single();
@@ -375,6 +378,7 @@ app.post("/make-server-918f1e54/checkout", async (c) => {
           late_fee_amount: 0,
           alteration_notes: item.alterationNotes || null,
           is_sale: isSale,
+          created_by: currentUser,
         })
         .select("id")
         .single();
@@ -417,7 +421,7 @@ app.post("/make-server-918f1e54/checkout", async (c) => {
           .from("inventory_items")
           .update({ 
             location_id: targetLocationId,
-            updated_by: "system",
+            updated_by: currentUser,
             updated_at: nowUTC.toISOString(),
           })
           .eq("id", item.dress.id)
@@ -451,7 +455,7 @@ app.post("/make-server-918f1e54/checkout", async (c) => {
             currency: "ARS",
             paid_at: nowUTC.toISOString(),
             reference: null,
-            created_by: "system",
+            created_by: currentUser,
           })
           .select("id")
           .single();
@@ -486,7 +490,7 @@ app.post("/make-server-918f1e54/checkout", async (c) => {
             amount: payment.amount,
             description: transactionDesc,
             reference: rentalId,
-            created_by: "system",
+            created_by: currentUser,
           })
           .select();
 
@@ -525,7 +529,7 @@ app.post("/make-server-918f1e54/checkout", async (c) => {
           currency: "ARS",
           paid_at: nowUTC.toISOString(),
           reference: "store-credit-applied",
-          created_by: "system",
+          created_by: currentUser,
         })
         .select("id")
         .single();
@@ -785,12 +789,13 @@ app.post("/make-server-918f1e54/restock", async (c) => {
     const previousQuantity = item.stock_quantity;
 
     // Update stock
+    const currentUser = getCurrentUserDisplay(c);
     const { data: updated, error: updateError } = await supabase
       .from("inventory_items")
       .update({
         stock_quantity: newQuantity,
         updated_at: new Date().toISOString(),
-        updated_by: "system",
+        updated_by: currentUser,
       })
       .eq("id", itemId)
       .select("id, sku, stock_quantity")

@@ -1,5 +1,6 @@
 import type { Hono } from "npm:hono";
 import type { SupabaseClient } from "npm:@supabase/supabase-js";
+import { getCurrentUserDisplay } from "../helpers/auth.ts";
 
 export function registerListsRoutes(app: Hono, supabase: SupabaseClient) {
 
@@ -40,7 +41,7 @@ export function registerListsRoutes(app: Hono, supabase: SupabaseClient) {
           {
             category_raw: value.trim(),
             status: "On",
-            created_by: "user",
+            created_by: getCurrentUserDisplay(c),
           },
         ])
         .select("id, category, status, created_at")
@@ -72,7 +73,7 @@ export function registerListsRoutes(app: Hono, supabase: SupabaseClient) {
         .from("category")
         .update({
           category_raw: value.trim(),
-          updated_by: "user",
+          updated_by: getCurrentUserDisplay(c),
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
@@ -149,7 +150,7 @@ export function registerListsRoutes(app: Hono, supabase: SupabaseClient) {
           {
             subcategory_raw: value.trim(),
             status: "On",
-            created_by: "user",
+            created_by: getCurrentUserDisplay(c),
           },
         ])
         .select("id, subcategory, status, created_at")
@@ -181,7 +182,7 @@ export function registerListsRoutes(app: Hono, supabase: SupabaseClient) {
         .from("subcategory")
         .update({
           subcategory_raw: value.trim(),
-          updated_by: "user",
+          updated_by: getCurrentUserDisplay(c),
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
@@ -258,7 +259,7 @@ export function registerListsRoutes(app: Hono, supabase: SupabaseClient) {
           {
             color_raw: value.trim(),
             status: "On",
-            created_by: "user",
+            created_by: getCurrentUserDisplay(c),
           },
         ])
         .select("id, color, status, created_at")
@@ -290,7 +291,7 @@ export function registerListsRoutes(app: Hono, supabase: SupabaseClient) {
         .from("color")
         .update({
           color_raw: value.trim(),
-          updated_by: "user",
+          updated_by: getCurrentUserDisplay(c),
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
@@ -395,7 +396,7 @@ export function registerListsRoutes(app: Hono, supabase: SupabaseClient) {
           {
             size_raw: value.trim(),
             status: "On",
-            created_by: "user",
+            created_by: getCurrentUserDisplay(c),
           },
         ])
         .select("id, size, status, created_at")
@@ -427,7 +428,7 @@ export function registerListsRoutes(app: Hono, supabase: SupabaseClient) {
         .from("size")
         .update({
           size_raw: value.trim(),
-          updated_by: "user",
+          updated_by: getCurrentUserDisplay(c),
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
@@ -504,7 +505,7 @@ export function registerListsRoutes(app: Hono, supabase: SupabaseClient) {
           {
             brand_raw: value.trim(),
             status: "On",
-            created_by: "user",
+            created_by: getCurrentUserDisplay(c),
           },
         ])
         .select("id, brand, status, created_at")
@@ -536,7 +537,7 @@ export function registerListsRoutes(app: Hono, supabase: SupabaseClient) {
         .from("brand")
         .update({
           brand_raw: value.trim(),
-          updated_by: "user",
+          updated_by: getCurrentUserDisplay(c),
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)
@@ -613,7 +614,7 @@ export function registerListsRoutes(app: Hono, supabase: SupabaseClient) {
           {
             name_raw: value.trim(),
             status: "On",
-            created_by: "user",
+            created_by: getCurrentUserDisplay(c),
           },
         ])
         .select("id, name, status, created_at")
@@ -645,7 +646,7 @@ export function registerListsRoutes(app: Hono, supabase: SupabaseClient) {
         .from("name")
         .update({
           name_raw: value.trim(),
-          updated_by: "user",
+          updated_by: getCurrentUserDisplay(c),
           updated_at: new Date().toISOString(),
         })
         .eq("id", id)

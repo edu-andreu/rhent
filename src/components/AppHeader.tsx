@@ -1,9 +1,12 @@
-import { ShoppingCart, Menu } from "lucide-react";
+import { ShoppingCart, Menu, LogOut } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import logo from "figma:asset/logo_rhent_bg_transparent.png";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
+import { useAuth } from "../providers/AuthProvider";
 
 interface AppHeaderProps {
   activeTab: string;
@@ -14,12 +17,22 @@ interface AppHeaderProps {
   onOpenCart: () => void;
 }
 
-/**
- * Application header component with navigation tabs and cart button.
- * Displays logo, navigation tabs (desktop) or mobile menu (mobile), and shopping cart icon.
- * 
- * @param props - Header configuration including active tab, handlers, and cart count
- */
+interface TabDef {
+  id: string;
+  label: string;
+  permission: string;
+}
+
+const ALL_TABS: TabDef[] = [
+  { id: "dashboard", label: "Dashboard", permission: "tab:dashboard" },
+  { id: "catalog", label: "Catalog", permission: "tab:catalog" },
+  { id: "rentals", label: "Rentals", permission: "tab:rentals" },
+  { id: "reservations", label: "Reservations", permission: "tab:reservations" },
+  { id: "customers", label: "Customers", permission: "tab:customers" },
+  { id: "cash", label: "Cash Drawer", permission: "tab:cash" },
+  { id: "settings", label: "Settings", permission: "tab:settings" },
+];
+
 export function AppHeader({
   activeTab,
   onTabChange,
@@ -28,6 +41,10 @@ export function AppHeader({
   cartItemCount,
   onOpenCart,
 }: AppHeaderProps) {
+  const { appUser, role, permissions, signOut } = useAuth();
+
+  const visibleTabs = ALL_TABS.filter((t) => permissions.includes(t.permission));
+
   const navButton = (tab: string, label: string) => (
     <Button
       variant={activeTab === tab ? "secondary" : "ghost"}
@@ -40,6 +57,15 @@ export function AppHeader({
       {label}
     </Button>
   );
+
+  const initials = appUser?.full_name
+    ? appUser.full_name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2)
+    : appUser?.email?.[0]?.toUpperCase() ?? "?";
 
   return (
     <header id="main-header" data-testid="app-header" className="border-b bg-background z-50 flex-shrink-0">
@@ -61,12 +87,7 @@ export function AppHeader({
                   <SheetDescription className="sr-only">Main navigation menu</SheetDescription>
                 </SheetHeader>
                 <nav id="mobile-nav" className="flex flex-col gap-2 mt-6">
-                  {navButton("cash", "Cash Drawer")}
-                  {navButton("catalog", "Catalog")}
-                  {navButton("rentals", "Rentals")}
-                  {navButton("reservations", "Reservations")}
-                  {navButton("customers", "Customers")}
-                  {navButton("settings", "Settings")}
+                  {visibleTabs.map((t) => navButton(t.id, t.label))}
                 </nav>
               </SheetContent>
             </Sheet>
@@ -75,29 +96,55 @@ export function AppHeader({
 
           <div id="main-nav" className="hidden lg:block flex-1 max-w-4xl">
             <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
-              <TabsList className="grid w-full grid-cols-6 h-10">
-                <TabsTrigger value="catalog" className="text-sm" data-testid="nav-tab-catalog">Catalog</TabsTrigger>
-                <TabsTrigger value="rentals" className="text-sm" data-testid="nav-tab-rentals">Rentals</TabsTrigger>
-                <TabsTrigger value="reservations" className="text-sm" data-testid="nav-tab-reservations">Reservations</TabsTrigger>
-                <TabsTrigger value="customers" className="text-sm" data-testid="nav-tab-customers">Customers</TabsTrigger>
-                <TabsTrigger value="cash" className="text-sm" data-testid="nav-tab-cash">Cash Drawer</TabsTrigger>
-                <TabsTrigger value="settings" className="text-sm" data-testid="nav-tab-settings">Settings</TabsTrigger>
+              <TabsList className={`grid w-full h-10`} style={{ gridTemplateColumns: `repeat(${visibleTabs.length}, minmax(0, 1fr))` }}>
+                {visibleTabs.map((t) => (
+                  <TabsTrigger key={t.id} value={t.id} className="text-sm" data-testid={`nav-tab-${t.id}`}>
+                    {t.label}
+                  </TabsTrigger>
+                ))}
               </TabsList>
             </Tabs>
           </div>
 
-          <Button id="cart-button" data-testid="cart-button" variant="outline" size="lg" className="relative" onClick={onOpenCart}>
-            <ShoppingCart className="w-5 h-5" />
-            {cartItemCount > 0 && (
-              <Badge
-                variant="destructive"
-                className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0 flex items-center justify-center"
-                data-testid="cart-badge"
-              >
-                {cartItemCount}
-              </Badge>
-            )}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button id="cart-button" data-testid="cart-button" variant="outline" size="lg" className="relative" onClick={onOpenCart}>
+              <ShoppingCart className="w-5 h-5" />
+              {cartItemCount > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0 flex items-center justify-center"
+                  data-testid="cart-badge"
+                >
+                  {cartItemCount}
+                </Badge>
+              )}
+            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-9 w-9 rounded-full" data-testid="user-menu-button">
+                  <Avatar className="h-9 w-9">
+                    <AvatarImage src={appUser?.avatar_url ?? undefined} alt={appUser?.full_name ?? "User"} referrerPolicy="no-referrer" />
+                    <AvatarFallback>{initials}</AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{appUser?.full_name ?? "User"}</p>
+                    <p className="text-xs leading-none text-muted-foreground">{appUser?.email}</p>
+                    <p className="text-xs leading-none text-muted-foreground capitalize">{role}</p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={signOut} className="cursor-pointer">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </div>
     </header>

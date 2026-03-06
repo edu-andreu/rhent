@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { ApiError, deleteFunction, getFunction, postFunction, putFunction } from "../../shared/api/client";
 import { handleApiError } from "../../shared/utils/errorHandler";
+import { useAuth } from "../../providers/AuthProvider";
 
 export interface DrawerData {
   drawerId: string;
@@ -37,7 +38,7 @@ export interface DrawerTransaction {
   description?: string;
   categoryId?: string | null;
   categoryName?: string | null;
-  cashOutType?: 'expense' | 'payroll' | null;
+  cashOutType?: 'expense' | 'payroll' | 'move_money' | null;
   employeeName?: string | null;
   shiftStart?: string | null;
   shiftEnd?: string | null;
@@ -160,11 +161,15 @@ export function useCashDrawer() {
   // Categories & payroll
   const [categories, setCategories] = useState<TransactionCategory[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
-  const [cashOutType, setCashOutType] = useState<'expense' | 'payroll'>('expense');
+  const [cashOutType, setCashOutType] = useState<'expense' | 'payroll' | 'move_money'>('expense');
   const [employeeName, setEmployeeName] = useState('');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [employees, setEmployees] = useState<{ id: string; full_name: string | null; email: string }[]>([]);
   const [shiftStart, setShiftStart] = useState('');
   const [shiftEnd, setShiftEnd] = useState('');
   const [hourlyRate, setHourlyRate] = useState(5000);
+
+  const { appUser } = useAuth();
 
   // Edit Opening Cash Dialog
   const [showEditOpeningCashDialog, setShowEditOpeningCashDialog] = useState(false);
@@ -221,6 +226,15 @@ export function useCashDrawer() {
       setHourlyRate(rate);
     } catch (err) {
       console.error('Error fetching hourly rate:', err);
+    }
+  };
+
+  const fetchEmployees = async () => {
+    try {
+      const data = await getFunction<{ employees: { id: string; full_name: string | null; email: string }[] }>("users/employees");
+      setEmployees(data.employees || []);
+    } catch (err) {
+      console.error('Error fetching employees:', err);
     }
   };
 
@@ -321,7 +335,6 @@ export function useCashDrawer() {
       const data = await postFunction<Record<string, any>>("drawer/open", {
         openingCash: parseFloat(openingCash),
         location: 'Showroom',
-        openedBy: 'user',
       });
       if (data.warning) {
         showAlert("Warning", data.warning);
@@ -350,7 +363,6 @@ export function useCashDrawer() {
     try {
       await postFunction("drawer/close", {
         countedCash: parseFloat(countedCash),
-        closedBy: 'user',
         notes: closeNotes || undefined,
       });
 
@@ -368,10 +380,35 @@ export function useCashDrawer() {
   };
 
   const handleAddCashTransaction = async () => {
+    // Move Money path
+    if (transactionType === 'out' && cashOutType === 'move_money') {
+      if (!transactionAmount || parseFloat(transactionAmount) <= 0) {
+        showAlert("Missing Information", "Please enter a valid amount");
+        return;
+      }
+      setLoading(true);
+      try {
+        await postFunction("drawer/transaction", {
+          cash_out_type: 'move_money',
+          amount: parseFloat(transactionAmount),
+          notes: transactionNotes || undefined,
+        });
+        resetTransactionDialog();
+        await fetchCurrentDrawer();
+      } catch (err) {
+        handleApiError(err, "move money transaction", "Failed to add move money transaction");
+        showAlert("Error", err instanceof Error ? err.message : "Failed to add move money transaction");
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     // Payroll path
     if (transactionType === 'out' && cashOutType === 'payroll') {
-      if (!employeeName.trim()) {
-        showAlert("Missing Information", "Please enter the employee name");
+      const name = selectedEmployeeId ? (employees.find((e) => e.id === selectedEmployeeId)?.full_name ?? '').trim() : employeeName.trim();
+      if (!name) {
+        showAlert("Missing Information", "Please select an employee");
         return;
       }
       if (!shiftStart || !shiftEnd) {
@@ -387,7 +424,7 @@ export function useCashDrawer() {
       try {
         await postFunction("drawer/transaction", {
           cash_out_type: 'payroll',
-          employee_name: employeeName,
+          employee_name: name,
           shift_start: startISO,
           shift_end: endISO,
           notes: transactionNotes || undefined,
@@ -452,6 +489,7 @@ export function useCashDrawer() {
     setSelectedCategoryId('');
     setCashOutType('expense');
     setEmployeeName('');
+    setSelectedEmployeeId('');
     setShiftStart('');
     setShiftEnd('');
   };
@@ -481,8 +519,12 @@ export function useCashDrawer() {
   };
 
   const handleEditTransaction = async () => {
-    if (!editTransactionAmount || !editTransactionNotes || !editingTransaction) {
-      showAlert("Missing Information", "Please fill in amount and description");
+    if (!editTransactionAmount || !editingTransaction) {
+      showAlert("Missing Information", "Please fill in amount");
+      return;
+    }
+    if (editingTransaction.cashOutType !== 'move_money' && !editTransactionNotes) {
+      showAlert("Missing Information", "Please fill in description");
       return;
     }
 
@@ -490,11 +532,17 @@ export function useCashDrawer() {
     try {
       const isCashOut = editingTransaction.transactionType === 'cash_out';
       const rawAmount = parseFloat(editTransactionAmount);
-      const amount = isCashOut ? -Math.abs(rawAmount) : Math.abs(rawAmount);
+      // Move money: server expects positive amount and negates it
+      const amount =
+        editingTransaction.cashOutType === 'move_money'
+          ? Math.abs(rawAmount)
+          : isCashOut
+            ? -Math.abs(rawAmount)
+            : Math.abs(rawAmount);
 
       await putFunction(`drawer/transaction/${editingTransaction.transactionId}`, {
         amount,
-        notes: editTransactionNotes,
+        notes: editTransactionNotes || undefined,
       });
 
       setShowEditTransactionDialog(false);
@@ -533,11 +581,22 @@ export function useCashDrawer() {
 
   useEffect(() => {
     const loadInitialData = async () => {
-      await Promise.all([fetchCurrentDrawer(), fetchDrawerHistory(), fetchHourlyRate()]);
+      await Promise.all([fetchCurrentDrawer(), fetchDrawerHistory(), fetchHourlyRate(), fetchEmployees()]);
       setInitialLoading(false);
     };
     loadInitialData();
   }, []);
+
+  // Default selected employee when switching to payroll: current user if employee
+  useEffect(() => {
+    if (cashOutType === 'payroll' && appUser?.role === 'employee') {
+      setSelectedEmployeeId(appUser.id);
+      setEmployeeName(appUser.full_name ?? '');
+    } else if (cashOutType === 'payroll') {
+      setSelectedEmployeeId('');
+      setEmployeeName('');
+    }
+  }, [cashOutType, appUser?.id, appUser?.role, appUser?.full_name]);
 
   return {
     // Core data
@@ -589,6 +648,9 @@ export function useCashDrawer() {
     setSelectedCategoryId,
     cashOutType,
     setCashOutType,
+    employees,
+    selectedEmployeeId,
+    setSelectedEmployeeId,
     employeeName,
     setEmployeeName,
     shiftStart,

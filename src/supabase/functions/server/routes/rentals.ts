@@ -1,5 +1,6 @@
 import type { Hono } from "npm:hono";
 import type { SupabaseClient } from "npm:@supabase/supabase-js";
+import { getCurrentUserDisplay } from "../helpers/auth.ts";
 import * as kv from "../kv_store.ts";
 import { countBusinessDays, fetchHolidaysFromAPI, calculateExtraDays, getGMT3DateString } from "../helpers/calculations.ts";
 import { getCurrentOpenDrawer, validateDateNotWeekendOrHoliday } from "../helpers/validation.ts";
@@ -514,7 +515,7 @@ payments:`, payments);
         .update({
           late_days: lateDaysVal,
           late_fee_amount: lateFeeAmount,
-          updated_by: "system",
+          updated_by: getCurrentUserDisplay(c),
         })
         .eq("id", rentalItemId);
 
@@ -530,7 +531,7 @@ payments:`, payments);
         .update({
           late_days: 0,
           late_fee_amount: 0,
-          updated_by: "system",
+          updated_by: getCurrentUserDisplay(c),
         })
         .eq("id", rentalItemId);
 
@@ -555,7 +556,7 @@ payments:`, payments);
         .update({
           extra_days: newExtraDays,
           extra_days_amount: newExtraDaysAmount,
-          updated_by: "system",
+          updated_by: getCurrentUserDisplay(c),
         })
         .eq("id", rentalItemId);
 
@@ -580,7 +581,7 @@ payments:`, payments);
           event_time: new Date().toISOString(),
           actor: "system",
           notes: extraDaysEventNotes,
-          created_by: "system",
+          created_by: getCurrentUserDisplay(c),
         });
 
       if (extraDaysEventError) {
@@ -621,7 +622,7 @@ payments:`, payments);
                 .from("rental_items")
                 .update({
                   discount_amount: itemDiscountAmount,
-                  updated_by: "system",
+                  updated_by: getCurrentUserDisplay(c),
                 })
                 .eq("id", item.id);
             }
@@ -664,7 +665,7 @@ payments:`, payments);
         .update({
           discount_percent: discountPercent,
           notes: discountNotes,
-          updated_by: "system",
+          updated_by: getCurrentUserDisplay(c),
         })
         .eq("id", rentalId);
 
@@ -694,7 +695,7 @@ payments:`, payments);
           .from("rental_items")
           .update({
             discount_amount: itemDiscountAmount,
-            updated_by: "system",
+            updated_by: getCurrentUserDisplay(c),
           })
           .eq("id", item.id);
 
@@ -884,7 +885,7 @@ payments:`, payments);
             currency: "ARS",
             paid_at: nowUTC.toISOString(),
             reference: "return-payment",
-            created_by: "system",
+            created_by: getCurrentUserDisplay(c),
           })
           .select("id")
           .single();
@@ -910,7 +911,7 @@ payments:`, payments);
               amount: payment.amount,
               description: transactionDesc,
               reference: rentalId,
-              created_by: "system",
+              created_by: getCurrentUserDisplay(c),
             });
 
           if (drawerTxnError) {
@@ -950,7 +951,7 @@ payments:`, payments);
           currency: "ARS",
           paid_at: nowUTC.toISOString(),
           reference: creditAmount > 0 ? "store-credit-applied" : "debt-settlement",
-          created_by: "system",
+          created_by: getCurrentUserDisplay(c),
         })
         .select("id")
         .single();
@@ -1002,7 +1003,7 @@ payments:`, payments);
               balance_after: newBalance,
               entry_type: creditAmount > 0 ? "credit_applied" : "debt_settled",
               notes: `Return checkout: ${action} (${Math.abs(creditAmount)})`,
-              created_by: "system",
+              created_by: getCurrentUserDisplay(c),
             });
           if (ledgerError) {
             console.log("⚠️ [LEDGER] Error inserting store_credit_ledger entry:", ledgerError.message);
@@ -1017,7 +1018,7 @@ payments:`, payments);
       .update({
         status: "returned",
         returned_at: nowUTC.toISOString(),
-        updated_by: "system",
+        updated_by: getCurrentUserDisplay(c),
       })
       .eq("id", rentalItemId);
 
@@ -1053,7 +1054,7 @@ payments:`, payments);
           .from("inventory_items")
           .update({
             location_id: locationId,
-            updated_by: "system",
+            updated_by: getCurrentUserDisplay(c),
             updated_at: nowUTC.toISOString(),
           })
           .eq("id", itemId);
@@ -1080,7 +1081,7 @@ payments:`, payments);
         .from("rentals")
         .update({
           status: "closed",
-          updated_by: "system",
+          updated_by: getCurrentUserDisplay(c),
         })
         .eq("id", rentalId);
 
@@ -1122,7 +1123,7 @@ payments:`, payments);
                 currency: "ARS",
                 paid_at: nowUTC.toISOString(),
                 reference: "surplus-refund-return",
-                created_by: "system",
+                created_by: getCurrentUserDisplay(c),
               })
               .select("id")
               .single();
@@ -1149,7 +1150,7 @@ payments:`, payments);
                   amount: surplusAmount, // Positive amount, but txn_type is "out"
                   description: refundDesc,
                   reference: rentalId,
-                  created_by: "system",
+                  created_by: getCurrentUserDisplay(c),
                 });
 
                 if (refundDrawerTxnError) {
@@ -1200,7 +1201,7 @@ payments:`, payments);
                   currency: "ARS",
                   paid_at: nowUTC.toISOString(),
                   reference: "surplus-to-store-credit-return",
-                  created_by: "system",
+                  created_by: getCurrentUserDisplay(c),
                 })
                 .select("id")
                 .single();
@@ -1247,7 +1248,7 @@ payments:`, payments);
                         balance_after: newBalance,
                         entry_type: "surplus_to_credit",
                         notes: `Return surplus: ${surplusAmount} added as store credit`,
-                        created_by: "system",
+                        created_by: getCurrentUserDisplay(c),
                       });
                     if (surplusLedgerErr) {
                       console.log("⚠️ [LEDGER] Error inserting surplus ledger entry:", surplusLedgerErr.message);
@@ -1410,7 +1411,7 @@ app.post("/make-server-918f1e54/rental-items/:id/reschedule", async (c) => {
         unit_price: currPrice, // Store ONLY base price (without extra days)
         extra_days: extraDaysCount,
         extra_days_amount: extraDaysAmount,
-        updated_by: "system",
+        updated_by: getCurrentUserDisplay(c),
       })
       .eq("id", rentalItemId);
 
@@ -1436,7 +1437,7 @@ app.post("/make-server-918f1e54/rental-items/:id/reschedule", async (c) => {
         event_time: new Date().toISOString(),
         actor: "system",
         notes: notesText,
-        created_by: "system",
+        created_by: getCurrentUserDisplay(c),
       });
 
     if (eventError) {
@@ -1766,7 +1767,7 @@ app.post("/make-server-918f1e54/rental-items/:id/swap", async (c) => {
         extra_days: swapExtraDays,
         extra_days_amount: swapExtraDaysAmount,
         alteration_notes: null,
-        updated_by: "system",
+        updated_by: getCurrentUserDisplay(c),
       })
       .eq("id", rentalItemId);
 
@@ -1793,7 +1794,7 @@ app.post("/make-server-918f1e54/rental-items/:id/swap", async (c) => {
         event_time: new Date().toISOString(),
         actor: "system",
         notes: swapNotesText,
-        created_by: "system",
+        created_by: getCurrentUserDisplay(c),
       });
 
     if (swapEventError) {

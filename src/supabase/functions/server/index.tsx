@@ -15,6 +15,7 @@ import { registerReservationsRoutes } from "./routes/reservations.ts";
 import { registerCheckoutRoutes } from "./routes/checkout.ts";
 import { registerCashDrawerRoutes } from "./routes/cashDrawer.ts";
 import { registerConfigurationRoutes } from "./routes/configuration.ts";
+import { registerUsersRoutes } from "./routes/users.ts";
 
 const app = new Hono();
 
@@ -34,6 +35,7 @@ app.use(
 // Initialize Supabase client
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
 
 if (!supabaseUrl || !supabaseServiceKey) {
   console.error("Missing required environment variables: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY");
@@ -41,6 +43,8 @@ if (!supabaseUrl || !supabaseServiceKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+// Anon-key client used only for verifying user JWTs (auth.getUser)
+const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey || supabaseServiceKey);
 console.log("Supabase client initialized successfully");
 
 // One-time startup migration: detect and fix swapped down payment config values
@@ -99,9 +103,49 @@ app.onError((err, c) => {
   return c.json({ error: "Internal server error: " + (err?.message || "Unknown error") }, 500);
 });
 
-// Health check
+// Health check (no auth required)
 app.get("/make-server-918f1e54/health", (c) => {
   return c.json({ status: "ok" });
+});
+
+// Auth middleware – verifies JWT and attaches user + role to context.
+// Skips health check (matched above before this middleware runs on other routes).
+app.use("/make-server-918f1e54/*", async (c, next) => {
+  // Health check already handled above
+  if (c.req.path.endsWith("/health")) return next();
+
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Missing or invalid authorization header" }, 401);
+  }
+
+  const token = authHeader.replace("Bearer ", "");
+
+  const { data: { user }, error } = await supabaseAuth.auth.getUser(token);
+  if (error || !user) {
+    return c.json({ error: "Invalid or expired token" }, 401);
+  }
+
+  // Look up app_users row for role + active status
+  const { data: appUser, error: appUserError } = await supabase
+    .from("app_users")
+    .select("*")
+    .eq("id", user.id)
+    .single();
+
+  if (appUserError || !appUser) {
+    return c.json({ error: "User profile not found" }, 403);
+  }
+
+  if (!appUser.is_active) {
+    return c.json({ error: "Account is deactivated" }, 403);
+  }
+
+  c.set("user", user);
+  c.set("appUser", appUser);
+  c.set("role", appUser.role);
+
+  await next();
 });
 
 // Register all route modules
@@ -113,6 +157,7 @@ registerReservationsRoutes(app, supabase);
 registerCheckoutRoutes(app, supabase, validateDateNotWeekendOrHoliday);
 registerCashDrawerRoutes(app, supabase);
 registerConfigurationRoutes(app, supabase);
+registerUsersRoutes(app, supabase);
 
 // Register reservation conversion routes (existing separate module)
 registerReservationConversionRoutes(

@@ -4,6 +4,7 @@ import { useAppState } from "../providers/AppStateProvider";
 import { Dress, Customer } from "../types";
 
 // Lazy-load tab components for code splitting
+const DashboardTab = lazy(() => import("../features/dashboard/DashboardTab").then((m) => ({ default: m.DashboardTab })));
 const CatalogTab = lazy(() => import("../features/catalog/CatalogTab").then((m) => ({ default: m.CatalogTab })));
 const RentalsTab = lazy(() => import("../features/rentals/RentalsTab").then((m) => ({ default: m.RentalsTab })));
 const ReservationsTab = lazy(() => import("../features/reservations/ReservationsTab").then((m) => ({ default: m.ReservationsTab })));
@@ -87,6 +88,10 @@ export function TabRouter({
       }
     >
       <TabErrorBoundary tabName={activeTab} key={activeTab}>
+        {activeTab === "dashboard" && (
+          <DashboardTab dresses={dresses} rentals={rentals} reservations={reservations} />
+        )}
+
         {activeTab === "catalog" && (
           <CatalogTab
             dresses={dresses}

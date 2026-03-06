@@ -12,6 +12,9 @@ interface TransactionTableProps {
 }
 
 function getDescriptionDisplay(t: DrawerTransaction) {
+  if (t.cashOutType === 'move_money') {
+    return t.description?.replace(/^Move money:\s*/i, '') || 'Move money';
+  }
   if (t.categoryName) {
     if (t.cashOutType === 'payroll' && t.employeeName) {
       return t.employeeName;
@@ -22,6 +25,9 @@ function getDescriptionDisplay(t: DrawerTransaction) {
 }
 
 function getNotesDisplay(t: DrawerTransaction) {
+  if (t.cashOutType === 'move_money') {
+    return t.notes || '-';
+  }
   if (t.cashOutType === 'payroll' && t.hoursWorked != null && t.hourlyRate != null) {
     return `${t.hoursWorked}h × $${formatCurrency(t.hourlyRate)}/hr`;
   }
@@ -69,6 +75,11 @@ export function TransactionTable({
                     {t.cashOutType === 'payroll' && (
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
                         Payroll
+                      </Badge>
+                    )}
+                    {t.cashOutType === 'move_money' && (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
+                        Move Money
                       </Badge>
                     )}
                   </div>

@@ -1,5 +1,5 @@
 import React from "react";
-import { DollarSign, ArrowRight, LogIn, LogOut, Receipt, Users } from "lucide-react";
+import { DollarSign, ArrowRight, LogIn, LogOut, Receipt, Users, Banknote } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -9,6 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { formatCurrency, DrawerSummary, DrawerTransaction, TransactionCategory } from "./useCashDrawer";
 import { CategoryCombobox } from "./CategoryCombobox";
 import { TimePicker } from "./TimePicker";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 
 interface CashDrawerDialogsProps {
   loading: boolean;
@@ -44,8 +45,12 @@ interface CashDrawerDialogsProps {
   categories: TransactionCategory[];
   selectedCategoryId: string;
   setSelectedCategoryId: (id: string) => void;
-  cashOutType: 'expense' | 'payroll';
-  setCashOutType: (type: 'expense' | 'payroll') => void;
+  cashOutType: 'expense' | 'payroll' | 'move_money';
+  setCashOutType: (type: 'expense' | 'payroll' | 'move_money') => void;
+  canMoveMoney?: boolean;
+  employees: { id: string; full_name: string | null; email: string }[];
+  selectedEmployeeId: string;
+  setSelectedEmployeeId: (id: string) => void;
   employeeName: string;
   setEmployeeName: (name: string) => void;
   shiftStart: string;
@@ -118,6 +123,10 @@ export function CashDrawerDialogs({
   setSelectedCategoryId,
   cashOutType,
   setCashOutType,
+  canMoveMoney = false,
+  employees,
+  selectedEmployeeId,
+  setSelectedEmployeeId,
   employeeName,
   setEmployeeName,
   shiftStart,
@@ -285,11 +294,11 @@ export function CashDrawerDialogs({
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* Cash Out: Type toggle (Expense / Payroll) */}
+            {/* Cash Out: Type toggle (Expense / Payroll / Move Money) */}
             {transactionType === 'out' && (
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Type *</Label>
-                <div className="grid grid-cols-2 gap-2 p-1 bg-muted/50 rounded-lg">
+                <div className={`grid gap-2 p-1 bg-muted/50 rounded-lg ${canMoveMoney ? 'grid-cols-3' : 'grid-cols-2'}`}>
                   <button
                     type="button"
                     onClick={() => setCashOutType('expense')}
@@ -314,21 +323,75 @@ export function CashDrawerDialogs({
                     <Users className="w-4 h-4" />
                     <span>Payroll</span>
                   </button>
+                  {canMoveMoney && (
+                    <button
+                      type="button"
+                      onClick={() => setCashOutType('move_money')}
+                      className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all ${
+                        cashOutType === 'move_money'
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Banknote className="w-4 h-4" />
+                      <span>Move Money</span>
+                    </button>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* Payroll fields */}
-            {transactionType === 'out' && cashOutType === 'payroll' ? (
+            {/* Move Money: amount + optional description */}
+            {transactionType === 'out' && cashOutType === 'move_money' ? (
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="employeeName">Employee Name *</Label>
-                  <Input
-                    id="employeeName"
-                    placeholder="Enter employee name..."
-                    value={employeeName}
-                    onChange={(e) => setEmployeeName(e.target.value)}
+                  <Label htmlFor="transactionAmount">Amount *</Label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="transactionAmount"
+                      type="number"
+                      step="1000"
+                      className="pl-8"
+                      placeholder="0"
+                      value={transactionAmount}
+                      onChange={(e) => setTransactionAmount(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="transactionNotes">Description (optional)</Label>
+                  <Textarea
+                    id="transactionNotes"
+                    placeholder="e.g. To vault..."
+                    value={transactionNotes}
+                    onChange={(e) => setTransactionNotes(e.target.value)}
                   />
+                </div>
+              </>
+            ) : transactionType === 'out' && cashOutType === 'payroll' ? (
+              <>
+                <div className="space-y-2">
+                  <Label>Employee *</Label>
+                  <Select
+                    value={selectedEmployeeId || undefined}
+                    onValueChange={(value) => {
+                      setSelectedEmployeeId(value);
+                      const emp = employees.find((e) => e.id === value);
+                      setEmployeeName(emp?.full_name ?? '');
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select employee..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {employees.map((emp) => (
+                        <SelectItem key={emp.id} value={emp.id}>
+                          {emp.full_name || emp.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

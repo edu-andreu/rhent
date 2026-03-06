@@ -7,9 +7,13 @@ import { TransactionTable } from "./cash-drawer/TransactionTable";
 import { AuditLogSection } from "./cash-drawer/AuditLogSection";
 import { DrawerHistory } from "./cash-drawer/DrawerHistory";
 import { CashDrawerDialogs } from "./cash-drawer/CashDrawerDialogs";
+import { useAuth } from "../providers/AuthProvider";
 
 export function CashDrawer() {
   const drawer = useCashDrawer();
+  const { permissions } = useAuth();
+  const canViewHistory = permissions.includes("action:view_cash_drawer_history");
+  const activeTab = drawer.activeTab === "history" && !canViewHistory ? "current" : drawer.activeTab;
 
   const handleEditTransactionClick = (t: DrawerTransaction) => {
     drawer.setEditingTransaction(t);
@@ -35,11 +39,11 @@ export function CashDrawer() {
         </div>
       )}
 
-      <Tabs value={drawer.activeTab} onValueChange={drawer.setActiveTab} className="space-y-4">
+      <Tabs value={activeTab} onValueChange={drawer.setActiveTab} className="space-y-4">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <TabsList>
             <TabsTrigger value="current">Current Session</TabsTrigger>
-            <TabsTrigger value="history">History</TabsTrigger>
+            {canViewHistory && <TabsTrigger value="history">History</TabsTrigger>}
           </TabsList>
 
           {drawer.currentDrawer && (
@@ -106,6 +110,7 @@ export function CashDrawer() {
           )}
         </TabsContent>
 
+        {canViewHistory && (
         <TabsContent value="history">
           <DrawerHistory
             drawerHistory={drawer.drawerHistory}
@@ -115,6 +120,7 @@ export function CashDrawer() {
             toggleDrawerExpansion={drawer.toggleDrawerExpansion}
           />
         </TabsContent>
+        )}
       </Tabs>
 
       <CashDrawerDialogs
@@ -145,6 +151,10 @@ export function CashDrawer() {
         setSelectedCategoryId={drawer.setSelectedCategoryId}
         cashOutType={drawer.cashOutType}
         setCashOutType={drawer.setCashOutType}
+        canMoveMoney={permissions.includes("action:move_money")}
+        employees={drawer.employees}
+        selectedEmployeeId={drawer.selectedEmployeeId}
+        setSelectedEmployeeId={drawer.setSelectedEmployeeId}
         employeeName={drawer.employeeName}
         setEmployeeName={drawer.setEmployeeName}
         shiftStart={drawer.shiftStart}

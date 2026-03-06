@@ -1,5 +1,6 @@
 import type { Hono } from "npm:hono";
 import type { SupabaseClient } from "npm:@supabase/supabase-js";
+import { getCurrentUserDisplay } from "../helpers/auth.ts";
 import * as kv from "../kv_store.ts";
 
 export function registerReservationsRoutes(app: Hono, supabase: SupabaseClient) {
@@ -503,7 +504,7 @@ app.post("/make-server-918f1e54/cancel-reservation", async (c) => {
         event_time: nowUTC.toISOString(),
         actor: "system",
         notes: `Reservation cancelled. Item order total: ${itemOrderTotal.toFixed(2)}, Proportional paid: ${roundedProportionalPaid.toFixed(2)}, Cancellation fee (${cancellationFeePercent}%): ${cancellationFeeAmount.toFixed(2)}, Gross credit: ${creditAmount.toFixed(2)}, Swap credit deducted: ${cancelSwapCreditGiven.toFixed(2)}, Net credit: ${netCancelCredit.toFixed(2)}`,
-        created_by: "system",
+        created_by: getCurrentUserDisplay(c),
       });
 
     if (eventError) {

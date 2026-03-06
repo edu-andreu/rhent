@@ -1,4 +1,5 @@
 import * as kv from "./kv_store.ts";
+import { getCurrentUserDisplay } from "./helpers/auth.ts";
 import { validateConversionPayments } from "./helpers/conversionValidation.ts";
 
 const ALQUILADO_LOCATION_ID = "ca1c8acf-2c53-41bd-838a-35de029ac145";
@@ -441,7 +442,7 @@ export function registerReservationConversionRoutes(
               .from("rental_items")
               .update({
                 discount_amount: itemDiscountAmount,
-                updated_by: "system",
+                updated_by: getCurrentUserDisplay(c),
               })
               .eq("id", item.id);
 
@@ -460,7 +461,7 @@ export function registerReservationConversionRoutes(
           .update({
             extra_days: extraDays.days,
             extra_days_amount: extraDays.amount || 0,
-            updated_by: "system",
+            updated_by: getCurrentUserDisplay(c),
           })
           .eq("id", rentalItemId);
 
@@ -495,7 +496,7 @@ export function registerReservationConversionRoutes(
                   .from("rental_items")
                   .update({
                     discount_amount: itemDiscountAmount,
-                    updated_by: "system",
+                    updated_by: getCurrentUserDisplay(c),
                   })
                   .eq("id", item.id);
               }
@@ -676,7 +677,7 @@ export function registerReservationConversionRoutes(
             currency: "ARS",
             paid_at: nowUTC.toISOString(),
             reference: creditAppliedAmount > 0 ? "store-credit-applied" : "debt-settlement",
-            created_by: "system",
+            created_by: getCurrentUserDisplay(c),
           })
           .select("id")
           .single();
@@ -728,7 +729,7 @@ export function registerReservationConversionRoutes(
             balance_after: newCredit,
             entry_type: creditApplied > 0 ? "credit_applied" : "debt_settled",
             notes: `Reservation checkout: ${creditApplied > 0 ? "credit applied" : "debt settled"} (${Math.abs(creditApplied)})`,
-            created_by: "system",
+            created_by: getCurrentUserDisplay(c),
           });
 
         if (ledgerError) {
@@ -755,7 +756,7 @@ export function registerReservationConversionRoutes(
               currency: "ARS",
               paid_at: nowUTC.toISOString(),
               reference: "reservation-to-rental",
-              created_by: "system",
+              created_by: getCurrentUserDisplay(c),
             })
             .select("id")
             .single();
@@ -781,7 +782,7 @@ export function registerReservationConversionRoutes(
                 amount: payment.amount,
                 description: transactionDesc,
                 reference: rentalId,
-                created_by: "system",
+                created_by: getCurrentUserDisplay(c),
               });
 
             if (drawerTxnError) {
@@ -798,7 +799,7 @@ export function registerReservationConversionRoutes(
         .update({
           status: "checked_out",
           checked_out_at: nowUTC.toISOString(),
-          updated_by: "system",
+          updated_by: getCurrentUserDisplay(c),
         })
         .eq("id", rentalItemId);
 
@@ -812,7 +813,7 @@ export function registerReservationConversionRoutes(
         .from("inventory_items")
         .update({
           location_id: ALQUILADO_LOCATION_ID,
-          updated_by: "system",
+          updated_by: getCurrentUserDisplay(c),
           updated_at: nowUTC.toISOString(),
         })
         .eq("id", itemId);
@@ -832,7 +833,7 @@ export function registerReservationConversionRoutes(
           event_time: nowUTC.toISOString(),
           actor: "system",
           notes: "reservation to rental",
-          created_by: "system",
+          created_by: getCurrentUserDisplay(c),
         });
 
       if (eventError) {
@@ -909,7 +910,7 @@ export function registerReservationConversionRoutes(
                     currency: "ARS",
                     paid_at: nowUTC.toISOString(),
                     reference: "surplus-refund-conversion",
-                    created_by: "system",
+                    created_by: getCurrentUserDisplay(c),
                   })
                   .select("id")
                   .single();
@@ -960,7 +961,7 @@ export function registerReservationConversionRoutes(
                         amount: surplusAmount,
                         description: refundDesc,
                         reference: rentalId,
-                        created_by: "system",
+                        created_by: getCurrentUserDisplay(c),
                       });
 
                     if (refundDrawerTxnError) {
@@ -1013,7 +1014,7 @@ export function registerReservationConversionRoutes(
                       currency: "ARS",
                       paid_at: nowUTC.toISOString(),
                       reference: "surplus-to-store-credit-conversion",
-                      created_by: "system",
+                      created_by: getCurrentUserDisplay(c),
                     })
                     .select("id")
                     .single();
@@ -1056,7 +1057,7 @@ export function registerReservationConversionRoutes(
                               balance_after: newBal,
                               entry_type: "surplus_to_credit",
                               notes: `Reservation conversion surplus: ${netCreditToAdd} added as store credit`,
-                              created_by: "system",
+                              created_by: getCurrentUserDisplay(c),
                             });
                           if (surplusLedgerErr) {
                             console.log("⚠️ [LEDGER] Error inserting surplus ledger entry:", surplusLedgerErr.message);
@@ -1115,7 +1116,7 @@ export function registerReservationConversionRoutes(
                     currency: "ARS",
                     paid_at: nowUTC.toISOString(),
                     reference: "surplus-to-store-credit-conversion",
-                    created_by: "system",
+                    created_by: getCurrentUserDisplay(c),
                   })
                   .select("id")
                   .single();
@@ -1159,7 +1160,7 @@ export function registerReservationConversionRoutes(
                             balance_after: newBal,
                             entry_type: "surplus_to_credit",
                             notes: `Legacy reservation conversion surplus: ${netCreditToAddLegacy} added as store credit`,
-                            created_by: "system",
+                            created_by: getCurrentUserDisplay(c),
                           });
                         if (legacySurplusLedgerErr) {
                           console.log("⚠️ [LEDGER] Error inserting legacy surplus ledger entry:", legacySurplusLedgerErr.message);

@@ -1,5 +1,6 @@
 import type { Hono } from "npm:hono";
 import type { SupabaseClient } from "npm:@supabase/supabase-js";
+import { getCurrentUserDisplay } from "../helpers/auth.ts";
 
 export function registerCustomersRoutes(app: Hono, supabase: SupabaseClient) {
 
@@ -68,7 +69,7 @@ export function registerCustomersRoutes(app: Hono, supabase: SupabaseClient) {
           email: email || null,
           comments: comments || null,
           status: "active",
-          created_by: "system",
+          created_by: getCurrentUserDisplay(c),
         })
         .select()
         .single();
@@ -103,7 +104,7 @@ export function registerCustomersRoutes(app: Hono, supabase: SupabaseClient) {
           email: email || null,
           comments: comments || null,
           updated_at: new Date().toISOString(),
-          updated_by: "system",
+          updated_by: getCurrentUserDisplay(c),
         })
         .eq("customer_id", customerId)
         .select()

@@ -11,6 +11,8 @@
  * - VITE_SUPABASE_URL: Full Supabase URL (optional, constructed from project ID if not provided)
  */
 
+import { createClient } from "@supabase/supabase-js";
+
 // Get environment variables with fallbacks for backward compatibility
 const getEnvVar = (key: string, fallback: string): string => {
   if (typeof import.meta !== "undefined" && import.meta.env) {
@@ -49,6 +51,12 @@ export const supabaseConfig = {
   storageBaseUrl: (): string =>
     `https://${getEnvVar("VITE_SUPABASE_PROJECT_ID", "iclkknwhafsluomwtcxp")}.supabase.co/storage/v1/object/public`,
 };
+
+/** localStorage keys Supabase Auth may use for the session (cleared on sign-out). */
+export const supabaseAuthStorageKeys = [
+  `sb-${supabaseConfig.projectId}-auth-token`,
+  `${supabaseConfig.projectId}-auth-token`,
+];
 
 /**
  * Application configuration
@@ -91,3 +99,8 @@ export const buildStorageUrl = (bucket: string, path: string): string => {
   const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
   return `${supabaseConfig.storageBaseUrl()}/${bucket}/${normalizedPath}`;
 };
+
+/**
+ * Supabase client (used for Auth on the frontend)
+ */
+export const supabase = createClient(supabaseConfig.url, supabaseConfig.publicAnonKey);

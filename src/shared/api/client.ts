@@ -1,4 +1,4 @@
-import { supabaseConfig, buildFunctionUrl } from "../config/env";
+import { supabaseConfig, buildFunctionUrl, supabase } from "../config/env";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -73,7 +73,9 @@ export const functionRequest = async <T = unknown>(
   const headers = new Headers(init.headers || {});
 
   if (!headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${supabaseConfig.publicAnonKey}`);
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token ?? supabaseConfig.publicAnonKey;
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   const bodyIsPlainObject =

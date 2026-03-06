@@ -1,5 +1,6 @@
 import type { Hono } from "npm:hono";
 import type { SupabaseClient } from "npm:@supabase/supabase-js";
+import { getCurrentUserDisplay } from "../helpers/auth.ts";
 import { getCurrentOpenDrawer } from "../helpers/validation.ts";
 import { getGMT3DateString } from "../helpers/calculations.ts";
 
@@ -63,6 +64,8 @@ app.post("/make-server-918f1e54/drawer/open", async (c) => {
     // Generate UUID for drawer_id
     const drawerId = crypto.randomUUID();
 
+    const currentUser = getCurrentUserDisplay(c);
+
     // Create new drawer
     const { data: newDrawer, error: insertError } = await supabase
       .from("daily_drawers")
@@ -70,7 +73,7 @@ app.post("/make-server-918f1e54/drawer/open", async (c) => {
         drawer_id: drawerId,
         business_date: businessDate,
         location: location,
-        opened_by: body.openedBy || "system",
+        opened_by: currentUser,
         opened_at: new Date().toISOString(),
         opening_cash: openingCashNum,
         status: "open",
@@ -99,7 +102,8 @@ app.post("/make-server-918f1e54/drawer/open", async (c) => {
 app.post("/make-server-918f1e54/drawer/close", async (c) => {
   try {
     const body = await c.req.json();
-    const { countedCash, closedBy = "system", notes = "" } = body;
+    const { countedCash, notes = "" } = body;
+    const closedBy = getCurrentUserDisplay(c);
 
     if (countedCash === undefined || countedCash === null) {
       return c.json({ error: "Counted cash amount is required" }, 400);
@@ -799,6 +803,7 @@ app.post("/make-server-918f1e54/drawer/transaction", async (c) => {
   try {
     const body = await c.req.json();
     const { amount, category, notes, category_id, cash_out_type, employee_name, shift_start, shift_end } = body;
+    const currentUser = getCurrentUserDisplay(c);
 
     // Get current open drawer
     const openDrawer = await getCurrentOpenDrawer(supabase);
@@ -861,7 +866,7 @@ app.post("/make-server-918f1e54/drawer/transaction", async (c) => {
           amount: payrollAmount,
           description: descParts.join(" - "),
           reference: null,
-          created_by: "user",
+          created_by: currentUser,
           category_id: null,
           cash_out_type: "payroll",
           employee_name: employee_name.trim(),
@@ -879,6 +884,44 @@ app.post("/make-server-918f1e54/drawer/transaction", async (c) => {
       }
 
       console.log(`✅ Payroll transaction created: ${employee_name.trim()} ${hoursWorked}h × $${hourlyRate} = $${Math.abs(payrollAmount)}`);
+      return c.json({ transaction }, 201);
+    }
+
+    // Move Money transaction (cash out to vault; no vault logic yet)
+    if (cash_out_type === "move_money") {
+      if (amount === undefined || amount === null) {
+        return c.json({ error: "Amount is required for move money" }, 400);
+      }
+      const amountNum = parseFloat(amount);
+      if (isNaN(amountNum) || amountNum <= 0) {
+        return c.json({ error: "Amount must be a positive number" }, 400);
+      }
+      const moveAmount = -amountNum;
+      const desc = notes?.trim() ? `Move money: ${notes.trim()}` : "Move money";
+
+      const { data: transaction, error: txnError } = await supabase
+        .from("drawer_transactions")
+        .insert({
+          drawer_txn_id: crypto.randomUUID(),
+          drawer_id: openDrawer.drawer_id,
+          payment_id: null,
+          txn_type: "cash_out",
+          method: "Cash",
+          amount: moveAmount,
+          description: desc,
+          reference: null,
+          created_by: currentUser,
+          category_id: null,
+          cash_out_type: "move_money",
+        })
+        .select()
+        .single();
+
+      if (txnError) {
+        console.log("Error creating move money transaction:", txnError);
+        return c.json({ error: `Failed to create transaction: ${txnError.message}` }, 500);
+      }
+      console.log(`✅ Move money transaction created: $${amountNum}`);
       return c.json({ transaction }, 201);
     }
 
@@ -908,7 +951,7 @@ app.post("/make-server-918f1e54/drawer/transaction", async (c) => {
         amount: amountNum,
         description: notes?.trim() || null,
         reference: null,
-        created_by: "user",
+        created_by: currentUser,
         category_id: category_id || null,
         cash_out_type: amountNum < 0 ? (cash_out_type || "expense") : null,
       })
@@ -1055,6 +1098,43 @@ app.put("/make-server-918f1e54/drawer/transaction/:id", async (c) => {
     }
 
     const effectiveCashOutType = cash_out_type !== undefined ? cash_out_type : existingTxn.cash_out_type;
+
+    // Handle move_money edit (amount + notes only)
+    if (effectiveCashOutType === "move_money" || existingTxn.cash_out_type === "move_money") {
+      if (amount === undefined || amount === null) {
+        return c.json({ error: "Amount is required" }, 400);
+      }
+      const amountNum = parseFloat(amount);
+      if (isNaN(amountNum) || amountNum <= 0) {
+        return c.json({ error: "Amount must be a positive number" }, 400);
+      }
+      const moveAmount = -amountNum;
+      const desc = notes?.trim() ? `Move money: ${notes.trim()}` : "Move money";
+
+      const { data: updatedTxn, error: updateError } = await supabase
+        .from("drawer_transactions")
+        .update({
+          amount: moveAmount,
+          txn_type: "cash_out",
+          description: desc,
+          cash_out_type: "move_money",
+          category_id: null,
+          employee_name: null,
+          shift_start: null,
+          shift_end: null,
+          hours_worked: null,
+          hourly_rate: null,
+        })
+        .eq("drawer_txn_id", transactionId)
+        .select("*")
+        .single();
+
+      if (updateError) {
+        console.log("Error updating move money transaction:", updateError);
+        return c.json({ error: `Failed to update transaction: ${updateError.message}` }, 500);
+      }
+      return c.json({ transaction: updatedTxn });
+    }
 
     // Handle payroll edit
     if (effectiveCashOutType === "payroll") {

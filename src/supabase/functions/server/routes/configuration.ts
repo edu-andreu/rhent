@@ -1,5 +1,6 @@
 import type { Hono } from "npm:hono";
 import type { SupabaseClient } from "npm:@supabase/supabase-js";
+import { getCurrentUserDisplay } from "../helpers/auth.ts";
 import * as kv from "../kv_store.ts";
 import { roundToNearestThousand } from "../priceUtils.ts";
 
@@ -42,7 +43,7 @@ app.post("/make-server-918f1e54/payment-methods", async (c) => {
         {
           payment_method_raw: value.trim(),
           status: "On",
-          created_by: "user",
+          created_by: getCurrentUserDisplay(c),
         },
       ])
       .select("id, payment_method, status, created_at")
@@ -75,7 +76,7 @@ app.put("/make-server-918f1e54/payment-methods/:id", async (c) => {
       .from("payments_methods")
       .update({
         payment_method_raw: value.trim(),
-        updated_by: "user",
+        updated_by: getCurrentUserDisplay(c),
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
