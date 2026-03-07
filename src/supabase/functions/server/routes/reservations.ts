@@ -68,11 +68,89 @@ app.get("/make-server-918f1e54/reservations/active", async (c) => {
       return c.json({ error: `Failed to fetch active reservations: ${error.message}` }, 500);
     }
 
+    // Auto-cancel overdue reservations past the grace period (1 business day)
+    const OVERDUE_GRACE_BUSINESS_DAYS = 1;
+    const now = new Date();
+    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const gmt3 = new Date(utc + (3600000 * -3));
+    const todayStr = `${gmt3.getFullYear()}-${String(gmt3.getMonth() + 1).padStart(2, '0')}-${String(gmt3.getDate()).padStart(2, '0')}`;
+
+    const autoCancelledIds = new Set<string>();
+    for (const item of (data || [])) {
+      if (item.start_date >= todayStr) continue;
+
+      // Count business days between start_date (exclusive) and today (inclusive)
+      const startParts = item.start_date.split('-');
+      const startDate = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
+      const todayParts = todayStr.split('-');
+      const todayDate = new Date(parseInt(todayParts[0]), parseInt(todayParts[1]) - 1, parseInt(todayParts[2]));
+      let businessDays = 0;
+      const cursor = new Date(startDate);
+      cursor.setDate(cursor.getDate() + 1);
+      while (cursor <= todayDate) {
+        const dow = cursor.getDay();
+        if (dow !== 0 && dow !== 6) businessDays++;
+        cursor.setDate(cursor.getDate() + 1);
+      }
+
+      if (businessDays <= OVERDUE_GRACE_BUSINESS_DAYS) continue;
+
+      console.log(`⏰ Auto-cancelling overdue reservation rental_item ${item.id} (start_date=${item.start_date}, ${businessDays} business days overdue)`);
+
+      // Cancel the rental_item
+      const { error: cancelErr } = await supabase
+        .from("rental_items")
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq("id", item.id);
+
+      if (cancelErr) {
+        console.log(`Error auto-cancelling rental_item ${item.id}:`, cancelErr.message);
+        continue;
+      }
+
+      // Reset inventory location to default (Showroom)
+      const defaultLocationId = "2d1cd314-22b1-4616-b576-123f26299317";
+      await supabase
+        .from("inventory_items")
+        .update({ location_id: defaultLocationId, updated_at: new Date().toISOString() })
+        .eq("id", item.item_id);
+
+      // Create audit record
+      await supabase
+        .from("rental_events")
+        .insert({
+          rental_item_id: item.id,
+          event_type: "cancelled",
+          event_time: new Date().toISOString(),
+          actor: "system",
+          notes: `Auto-cancelled: reservation was ${businessDays} business days overdue (grace period: ${OVERDUE_GRACE_BUSINESS_DAYS} day).`,
+          created_by: "system-auto-cancel",
+        });
+
+      // Check if all items in the rental are now cancelled
+      const { data: siblingItems } = await supabase
+        .from("rental_items")
+        .select("status")
+        .eq("rental_id", item.rental_id);
+
+      if (siblingItems?.every((si: any) => si.status === 'cancelled')) {
+        await supabase
+          .from("rentals")
+          .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+          .eq("id", item.rental_id);
+      }
+
+      autoCancelledIds.add(item.id);
+    }
+
+    // Filter out auto-cancelled items from the response
+    const activeItems = (data || []).filter((item: any) => !autoCancelledIds.has(item.id));
+
     // Transform data to match frontend Reservation interface
     const bucketName = 'photos';
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     
-    const reservations = await Promise.all((data || []).map(async (item: any) => {
+    const reservations = await Promise.all(activeItems.map(async (item: any) => {
       const itemName = item.inventory_items?.name?.name || "Unknown";
       const size = item.inventory_items?.size?.size || "";
       const colors = item.inventory_items?.inventory_item_colors?.map((ic: any) => ic.color?.color).filter(Boolean) || [];

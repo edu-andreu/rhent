@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
-import { Calendar, CalendarClock, PackageOpen, Pencil, Search, Sparkles, Trash2, User, ArrowLeftRight, Loader2 } from "lucide-react";
+import { AlertTriangle, Calendar, CalendarClock, PackageOpen, Pencil, Search, Sparkles, Trash2, User, ArrowLeftRight, Loader2 } from "lucide-react";
 import { Card, CardContent, CardFooter, CardHeader } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -165,6 +165,7 @@ export const MyReservations = memo(function MyReservations({
     return list.filter((reservation) => {
       const startDate = reservation.startDate || reservation.reservationDate;
       if (!startDate) return false;
+      if (startDate < today) return true;
       return startDate >= rangeStart && startDate <= rangeEnd;
     });
   }, [startDayFilter]);
@@ -198,11 +199,18 @@ export const MyReservations = memo(function MyReservations({
     [reservations]
   );
 
-  // Memoize filtered reservations
-  const filteredReservations = useMemo(() => 
-    filterBySearch(filterByStartDay(activeReservations)),
-    [activeReservations, filterByStartDay, filterBySearch]
-  );
+  // Memoize filtered reservations, sorting overdue first
+  const filteredReservations = useMemo(() => {
+    const filtered = filterBySearch(filterByStartDay(activeReservations));
+    const today = getCurrentDateGMT3();
+    return [...filtered].sort((a, b) => {
+      const aStart = a.startDate || a.reservationDate;
+      const bStart = b.startDate || b.reservationDate;
+      const aOverdue = aStart && aStart < today ? 1 : 0;
+      const bOverdue = bStart && bStart < today ? 1 : 0;
+      return bOverdue - aOverdue;
+    });
+  }, [activeReservations, filterByStartDay, filterBySearch]);
 
   if (reservations.length === 0) {
     return (
@@ -231,6 +239,10 @@ export const MyReservations = memo(function MyReservations({
       }, 400);
     }, [isProcessing, reservation.id]);
 
+    const today = getCurrentDateGMT3();
+    const startDate = reservation.startDate || reservation.reservationDate;
+    const isOverdue = !!startDate && startDate < today;
+
     return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow flex flex-col h-full">
       <CardHeader className="p-0">
@@ -240,6 +252,24 @@ export const MyReservations = memo(function MyReservations({
             alt={reservation.dressName}
             className="absolute inset-0 w-full h-full object-contain"
           />
+          {isOverdue && (
+            <>
+              <span
+                className="text-white absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded-full font-medium opacity-90 z-20"
+                style={{ backgroundColor: '#ef4444' }}
+              >
+                Overdue
+              </span>
+              <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-2 z-10 px-3">
+                <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center shadow-lg">
+                  <AlertTriangle className="w-5 h-5 text-white" />
+                </div>
+                <span className="text-white text-xs font-medium tracking-wide drop-shadow-sm text-center leading-tight">
+                  Reschedule within 1 day or it will be auto-cancelled
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </CardHeader>
       <CardContent className="p-3 flex-1 flex flex-col">
