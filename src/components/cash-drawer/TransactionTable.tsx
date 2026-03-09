@@ -5,6 +5,25 @@ import { Badge } from "../ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { formatCurrency, isTransactionEditable, isCashOutTransaction, DrawerTransaction } from "./useCashDrawer";
 
+/** Primary type shown in the outline badge: only Cash Out, Cash In, or Checkout. */
+function getPrimaryTypeLabel(t: DrawerTransaction): "Cash Out" | "Cash In" | "Checkout" {
+  if (["cash_out", "out", "cancellation"].includes(t.transactionType)) return "Cash Out";
+  if (["cash_in", "in"].includes(t.transactionType)) return "Cash In";
+  return "Checkout"; // checkout, return_checkout, reservation_checkout
+}
+
+/** Secondary badge label (expense, payroll, move money, cart, return, reservation, etc.). */
+function getSecondaryBadgeLabel(t: DrawerTransaction): string | null {
+  if (t.cashOutType === "payroll") return "Payroll";
+  if (t.cashOutType === "move_money") return "Move Money";
+  if (t.cashOutType === "expense") return "Expense";
+  if (t.transactionType === "checkout") return "Cart";
+  if (t.transactionType === "return_checkout") return "Return";
+  if (t.transactionType === "reservation_checkout") return "Reservation";
+  if (t.transactionType === "cancellation") return "Cancellation";
+  return null;
+}
+
 interface TransactionTableProps {
   transactions: DrawerTransaction[];
   onEditTransaction: (t: DrawerTransaction) => void;
@@ -70,16 +89,11 @@ export function TransactionTable({
                 <TableCell>
                   <div className="flex items-center gap-1.5">
                     <Badge variant="outline" className="capitalize font-normal">
-                      {t.transactionType.replace(/_/g, ' ')}
+                      {getPrimaryTypeLabel(t)}
                     </Badge>
-                    {t.cashOutType === 'payroll' && (
+                    {getSecondaryBadgeLabel(t) != null && (
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
-                        Payroll
-                      </Badge>
-                    )}
-                    {t.cashOutType === 'move_money' && (
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
-                        Move Money
+                        {getSecondaryBadgeLabel(t)}
                       </Badge>
                     )}
                   </div>

@@ -409,7 +409,13 @@ app.post("/make-server-918f1e54/checkout", async (c) => {
       }
 
       rentalItemIds.push(rentalItem.id);
-      rentalItemSubtotals.push({ id: rentalItem.id, subtotal: itemSubtotal });
+
+      // Upfront cap: the maximum this item should absorb during payment allocation.
+      // Sales require 100%, reservations use resDownPct, rentals use rentDownPct.
+      const itemAfterDiscount = itemSubtotal - itemDiscountAmount;
+      const upfrontPct = isSale ? 100 : status === 'reserved' ? resDownPct : rentDownPct;
+      const itemUpfrontCap = Math.round(itemAfterDiscount * upfrontPct / 100);
+      rentalItemSubtotals.push({ id: rentalItem.id, subtotal: itemUpfrontCap });
 
       // Update inventory location if item is checked out or sold
       if (shouldUpdateLocation) {

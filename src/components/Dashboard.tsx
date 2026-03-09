@@ -1,12 +1,30 @@
-import { useMemo, useState } from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { useMemo, useState, useEffect } from 'react';
+import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
 import { Dress, Rental, Reservation, Transaction, CashTransaction } from '../types';
 import { DashboardDateFilter } from './dashboard/DashboardDateFilter';
-import { DashboardKPICards } from './dashboard/DashboardKPICards';
-import { RevenueChart } from './dashboard/RevenueChart';
-import { RentalStatusChart } from './dashboard/RentalStatusChart';
-import { InventoryUsageChart } from './dashboard/InventoryUsageChart';
+import { SalesTab } from './dashboard/SalesTab';
+import { ExpensesTab } from './dashboard/ExpensesTab';
+import { MoneyTab } from './dashboard/MoneyTab';
 import { useDashboardMetrics } from './dashboard/useDashboardMetrics';
+import type { DashboardPaymentMethod, DashboardOwner, VaultTransfer } from '../features/dashboard/useDashboardData';
+import { useAuth } from '../providers/AuthProvider';
+
+const DASHBOARD_SUBTABS = [
+  { value: 'sales' as const, permission: 'tab:dashboard:sales', label: 'Sales' },
+  { value: 'expenses' as const, permission: 'tab:dashboard:expenses', label: 'Expenses' },
+  { value: 'money' as const, permission: 'tab:dashboard:money', label: 'Money' },
+] as const;
+
+const FILTER_LABELS: Record<string, string> = {
+  all: 'all time',
+  today: 'today',
+  yesterday: 'yesterday',
+  last7days: 'last 7 days',
+  last30days: 'last 30 days',
+  thisMonth: 'this month',
+  lastMonth: 'last month',
+  custom: 'custom range',
+};
 
 interface DashboardProps {
   dresses: Dress[];
@@ -15,6 +33,9 @@ interface DashboardProps {
   transactions: Transaction[];
   cashTransactions: CashTransaction[];
   openingBalance: number;
+  paymentMethods: DashboardPaymentMethod[];
+  owners: DashboardOwner[];
+  vaultTransfers: VaultTransfer[];
 }
 
 export function Dashboard({
@@ -24,10 +45,25 @@ export function Dashboard({
   transactions,
   cashTransactions,
   openingBalance,
+  paymentMethods,
+  owners,
+  vaultTransfers,
 }: DashboardProps) {
+  const { permissions } = useAuth();
+  const allowedSubTabs = useMemo(() => {
+    const allowed = DASHBOARD_SUBTABS.filter((s) => permissions.includes(s.permission));
+    return allowed.length > 0 ? allowed : DASHBOARD_SUBTABS;
+  }, [permissions]);
+
+  const [activeTab, setActiveTab] = useState<string>(allowedSubTabs[0].value);
   const [dateFilter, setDateFilter] = useState<string>('all');
   const [customDateFrom, setCustomDateFrom] = useState<Date | undefined>(undefined);
   const [customDateTo, setCustomDateTo] = useState<Date | undefined>(undefined);
+
+  useEffect(() => {
+    const valid = allowedSubTabs.some((s) => s.value === activeTab);
+    if (!valid) setActiveTab(allowedSubTabs[0].value);
+  }, [allowedSubTabs, activeTab]);
 
   const dateRange = useMemo(() => {
     const now = new Date();
@@ -71,66 +107,46 @@ export function Dashboard({
   }, [dateFilter, customDateFrom, customDateTo]);
 
   const metrics = useDashboardMetrics(
-    dresses, rentals, reservations, transactions, cashTransactions, openingBalance, dateRange,
+    dresses, rentals, reservations, transactions, cashTransactions,
+    openingBalance, dateRange, paymentMethods, vaultTransfers,
   );
+
+  const filterLabel = FILTER_LABELS[dateFilter] || 'custom range';
 
   return (
     <div className="space-y-6">
-      <DashboardDateFilter
-        dateFilter={dateFilter}
-        onDateFilterChange={setDateFilter}
-        customDateFrom={customDateFrom}
-        customDateTo={customDateTo}
-        onCustomDateFromChange={setCustomDateFrom}
-        onCustomDateToChange={setCustomDateTo}
-      />
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-auto">
+          <TabsList>
+            {allowedSubTabs.map((s) => (
+              <TabsTrigger key={s.value} value={s.value}>
+                {s.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
-      <DashboardKPICards
-        totalRevenue={metrics.totalRevenue}
-        todayRevenue={metrics.todayRevenue}
-        thisMonthRevenue={metrics.thisMonthRevenue}
-        revenueGrowth={metrics.revenueGrowth}
-        activeRentals={metrics.activeRentals}
-        overdueRentals={metrics.overdueRentals}
-        upcomingReservations={metrics.upcomingReservations}
-      />
+        <DashboardDateFilter
+          dateFilter={dateFilter}
+          onDateFilterChange={setDateFilter}
+          customDateFrom={customDateFrom}
+          customDateTo={customDateTo}
+          onCustomDateFromChange={setCustomDateFrom}
+          onCustomDateToChange={setCustomDateTo}
+        />
+      </div>
 
-      <Tabs defaultValue="revenue" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="revenue">Revenue Trend</TabsTrigger>
-          <TabsTrigger value="category">By Category</TabsTrigger>
-          <TabsTrigger value="cashflow">Cash Flow</TabsTrigger>
-        </TabsList>
+      {allowedSubTabs.some((s) => s.value === 'sales') && activeTab === 'sales' && (
+        <SalesTab metrics={metrics} filterLabel={filterLabel} dateFilter={dateFilter} />
+      )}
 
-        <TabsContent value="revenue">
-          <RevenueChart
-            revenueTrend={metrics.revenueTrend}
-            currentCashBalance={metrics.currentCashBalance}
-            openingBalance={openingBalance}
-            avgRentalValue={metrics.avgRentalValue}
-            totalRentals={metrics.totalRentals}
-          />
-        </TabsContent>
+      {allowedSubTabs.some((s) => s.value === 'expenses') && activeTab === 'expenses' && (
+        <ExpensesTab metrics={metrics} filterLabel={filterLabel} />
+      )}
 
-        <TabsContent value="category">
-          <RentalStatusChart
-            categoryData={metrics.categoryData}
-            popularDresses={metrics.popularDresses}
-          />
-        </TabsContent>
-
-        <TabsContent value="cashflow">
-          <InventoryUsageChart
-            cashIn={metrics.cashIn}
-            cashOut={metrics.cashOut}
-            netCashFlow={metrics.netCashFlow}
-            currentCashBalance={metrics.currentCashBalance}
-            cashInCategories={metrics.cashInCategories}
-            cashOutCategories={metrics.cashOutCategories}
-            cashFlowTrend={metrics.cashFlowTrend}
-          />
-        </TabsContent>
-      </Tabs>
+      {allowedSubTabs.some((s) => s.value === 'money') && activeTab === 'money' && (
+        <MoneyTab metrics={metrics} filterLabel={filterLabel} owners={owners} />
+      )}
     </div>
   );
 }

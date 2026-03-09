@@ -1,4 +1,5 @@
-import { ShoppingCart, Menu, LogOut } from "lucide-react";
+import { Fragment } from "react";
+import { ShoppingCart, Menu, LogOut, Settings } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "./ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
@@ -30,7 +31,6 @@ const ALL_TABS: TabDef[] = [
   { id: "reservations", label: "Reservations", permission: "tab:reservations" },
   { id: "customers", label: "Customers", permission: "tab:customers" },
   { id: "cash", label: "Cash Drawer", permission: "tab:cash" },
-  { id: "settings", label: "Settings", permission: "tab:settings" },
 ];
 
 export function AppHeader({
@@ -87,7 +87,9 @@ export function AppHeader({
                   <SheetDescription className="sr-only">Main navigation menu</SheetDescription>
                 </SheetHeader>
                 <nav id="mobile-nav" className="flex flex-col gap-2 mt-6">
-                  {visibleTabs.map((t) => navButton(t.id, t.label))}
+                  {visibleTabs.map((t) => (
+                    <Fragment key={t.id}>{navButton(t.id, t.label)}</Fragment>
+                  ))}
                 </nav>
               </SheetContent>
             </Sheet>
@@ -138,6 +140,16 @@ export function AppHeader({
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {permissions.includes("action:view_edit_settings") && (
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    onClick={() => onTabChange("settings")}
+                    data-testid="user-menu-settings"
+                  >
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={signOut} className="cursor-pointer">
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign out

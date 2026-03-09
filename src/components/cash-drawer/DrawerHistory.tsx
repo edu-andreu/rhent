@@ -137,7 +137,9 @@ export function DrawerHistory({
                               )}
                             </div>
 
-                            {detail.transactions.length > 0 ? (
+                            {(() => {
+                              const cashTransactions = detail.transactions.filter((t: DrawerTransaction) => t.isCash !== false);
+                              return cashTransactions.length > 0 ? (
                               <div className="border rounded-md overflow-hidden bg-background">
                                 <Table>
                                   <TableHeader>
@@ -150,7 +152,7 @@ export function DrawerHistory({
                                     </TableRow>
                                   </TableHeader>
                                   <TableBody>
-                                    {detail.transactions.map((t: any) => (
+                                    {cashTransactions.map((t: DrawerTransaction) => (
                                       <TableRow key={t.transactionId} className="text-sm">
                                         <TableCell className="text-muted-foreground text-xs whitespace-nowrap py-2">
                                           {new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -175,8 +177,9 @@ export function DrawerHistory({
                                 </Table>
                               </div>
                             ) : (
-                              <p className="text-sm text-muted-foreground text-center py-4">No transactions recorded</p>
-                            )}
+                              <p className="text-sm text-muted-foreground text-center py-4">No cash transactions recorded</p>
+                            );
+                            })()}
                           </div>
                         ) : null}
                       </TableCell>

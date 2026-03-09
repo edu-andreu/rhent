@@ -117,7 +117,7 @@ export function ReservationCheckoutTotals({
             <span className="font-semibold text-foreground">{formatCurrency(minimumRequired)}</span>
           </div>
           <div className="text-xs text-muted-foreground mt-0.5 px-1">
-            {rentDownPct}% of balance due
+            {rentDownPct}% upfront requirement
           </div>
         </>
       )}

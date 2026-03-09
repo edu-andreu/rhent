@@ -92,7 +92,7 @@ export function CashDrawer() {
 
               {drawer.currentDrawer && (
                 <TransactionTable
-                  transactions={drawer.transactions}
+                  transactions={drawer.transactions.filter((t) => t.isCash !== false)}
                   onEditTransaction={handleEditTransactionClick}
                   onDeleteTransaction={handleDeleteTransactionClick}
                 />

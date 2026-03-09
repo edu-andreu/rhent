@@ -44,6 +44,8 @@ export interface DrawerTransaction {
   shiftEnd?: string | null;
   hoursWorked?: number | null;
   hourlyRate?: number | null;
+  /** True when payment is cash (or manual in/out); false for card etc. Used to show only cash in Cash Drawer tab. */
+  isCash?: boolean;
 }
 
 export interface TransactionCategory {

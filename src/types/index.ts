@@ -85,7 +85,7 @@ export interface PaymentMethod {
 
 export interface Transaction {
   id: string;
-  type: 'rental' | 'reservation' | 'refund' | 'late_fee';
+  type: 'rental' | 'reservation' | 'refund' | 'late_fee' | 'sale';
   relatedId: string; // rental or reservation ID
   itemName: string;
   amount: number;
@@ -94,6 +94,15 @@ export interface Transaction {
   paymentMethod: string; // Display name like "Visa •••• 4242"
   date: Date;
   description: string;
+  category?: string;
+  inventoryItemId?: string;
+  itemImage?: string;
+  lateDays?: number;
+  lateFeeAmount?: number;
+  discountAmount?: number;
+  discountPercent?: number;
+  extraDays?: number;
+  extraDaysAmount?: number;
 }
 
 export interface CartItem {

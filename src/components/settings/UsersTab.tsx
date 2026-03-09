@@ -39,12 +39,18 @@ const TAB_OPTIONS: { id: string; permission: string; label: string }[] = [
   { id: "reservations", permission: "tab:reservations", label: "Reservations" },
   { id: "customers", permission: "tab:customers", label: "Customers" },
   { id: "cash", permission: "tab:cash", label: "Cash Drawer" },
-  { id: "settings", permission: "tab:settings", label: "Settings" },
+];
+
+const DASHBOARD_SUBTAB_OPTIONS: { permission: string; label: string }[] = [
+  { permission: "tab:dashboard:sales", label: "Sales" },
+  { permission: "tab:dashboard:expenses", label: "Expenses" },
+  { permission: "tab:dashboard:money", label: "Money" },
 ];
 
 const ACTION_OPTIONS: { key: string; label: string }[] = [
   { key: "action:move_money", label: "Move Money" },
   { key: "action:view_cash_drawer_history", label: "View cash drawer history" },
+  { key: "action:view_edit_settings", label: "View / Edit Settings" },
 ];
 
 interface AppUserRow {
@@ -130,6 +136,20 @@ export function UsersTab() {
       const list = prev[r] || [];
       if (enabled) return { ...prev, [r]: list.includes(permission) ? list : [...list, permission] };
       return { ...prev, [r]: list.filter((p) => p !== permission) };
+    });
+  };
+
+  const updateDashboardPerms = (r: string, dashboardChecked: boolean) => {
+    if (dashboardChecked) {
+      updateRolePerms(r, "tab:dashboard", true);
+      return;
+    }
+    setRolePermissions((prev) => {
+      const list = prev[r] || [];
+      const filtered = list.filter(
+        (p) => p !== "tab:dashboard" && !p.startsWith("tab:dashboard:")
+      );
+      return { ...prev, [r]: filtered };
     });
   };
 
@@ -256,7 +276,9 @@ export function UsersTab() {
           <div>
             <h3 className="text-lg font-medium">Role management</h3>
             <p className="text-sm text-muted-foreground">
-              Configure which tabs and actions each role can access. Only admin and owner can change these.
+              Configure which tabs and actions each role can access. Only admin and owner can change these. Dashboard
+              sub-tabs control which sections (Sales, Expenses, Money) a role sees. Settings is under Actions (View /
+              Edit Settings) and is opened from the account menu (avatar).
             </p>
           </div>
           {permsLoading ? (
@@ -279,28 +301,60 @@ export function UsersTab() {
                           <Button variant="outline" className="w-full justify-between font-normal">
                             {(() => {
                               const perms = rolePermissions[r] || [];
-                              const tabPerms = perms.filter((p) => p.startsWith("tab:"));
-                              return tabPerms.length ? `${tabPerms.length} tab(s) selected` : "Select tabs...";
+                              const mainTabCount = perms.filter((p) =>
+                                TAB_OPTIONS.some((t) => t.permission === p)
+                              ).length;
+                              return mainTabCount ? `${mainTabCount} tab(s) selected` : "Select tabs...";
                             })()}
                             <ChevronDown className="ml-2 h-4 w-4 opacity-50" />
                           </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-56 p-2" align="start">
                           <div className="space-y-2 max-h-64 overflow-y-auto">
-                            {TAB_OPTIONS.map((tab) => (
-                              <label
-                                key={tab.permission}
-                                className="flex items-center gap-2 cursor-pointer rounded-md px-2 py-1.5 hover:bg-muted"
-                              >
-                                <Checkbox
-                                  checked={(rolePermissions[r] || []).includes(tab.permission)}
-                                  onCheckedChange={(checked) =>
-                                    updateRolePerms(r, tab.permission, !!checked)
-                                  }
-                                />
-                                <span className="text-sm">{tab.label}</span>
-                              </label>
-                            ))}
+                            {TAB_OPTIONS.map((tab) => {
+                              const perms = rolePermissions[r] || [];
+                              const isDashboard = tab.permission === "tab:dashboard";
+                              const dashboardChecked = perms.includes("tab:dashboard");
+                              return (
+                                <div key={tab.permission}>
+                                  <label
+                                    className="flex items-center gap-2 cursor-pointer rounded-md px-2 py-1.5 hover:bg-muted"
+                                  >
+                                    <Checkbox
+                                      checked={perms.includes(tab.permission)}
+                                      onCheckedChange={(checked) =>
+                                        isDashboard
+                                          ? updateDashboardPerms(r, !!checked)
+                                          : updateRolePerms(r, tab.permission, !!checked)
+                                      }
+                                    />
+                                    <span className="text-sm">{tab.label}</span>
+                                  </label>
+                                  {isDashboard && (
+                                    <div className="ml-4 mt-1 space-y-1 border-l-2 border-muted pl-2">
+                                      {DASHBOARD_SUBTAB_OPTIONS.map((sub) => (
+                                        <label
+                                          key={sub.permission}
+                                          className={`flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted ${
+                                            !dashboardChecked ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+                                          }`}
+                                        >
+                                          <Checkbox
+                                            checked={perms.includes(sub.permission)}
+                                            disabled={!dashboardChecked}
+                                            onCheckedChange={(checked) =>
+                                              dashboardChecked &&
+                                              updateRolePerms(r, sub.permission, !!checked)
+                                            }
+                                          />
+                                          <span className="text-sm">{sub.label}</span>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </PopoverContent>
                       </Popover>

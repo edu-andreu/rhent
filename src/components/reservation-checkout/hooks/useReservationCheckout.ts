@@ -159,12 +159,22 @@ export function useReservationCheckout({
   const discountAmount = calcResult.discountAmount;
   const itemTotal = calcResult.totalAfterDiscount;
   const orderGrandTotal = itemTotal + otherItemsTotal;
-  const balanceDueBeforeCredit = Math.max(0, orderGrandTotal - orderPaymentsTotal);
-  const balanceDue = Math.max(0, balanceDueBeforeCredit - creditApplied);
+
+  // Item-level balance: must match server-side conversionValidation.ts logic
+  const itemBalanceDue = Math.max(0, itemTotal - thisItemPaymentsTotal - creditApplied);
+  const balanceDue = itemBalanceDue;
   const hasBalance = balanceDue > 0.01;
+
+  // Order-level surplus detection (overpayment across all items)
   const surplus = Math.max(0, orderPaymentsTotal - orderGrandTotal);
   const hasSurplus = surplus > 0.01;
-  const minimumRequired = Math.min(Math.round(balanceDue * rentDownPct / 100), balanceDue);
+
+  // Item-level minimum: rentDownPct of item total, minus what's already paid
+  const itemMinimumRequired = Math.round(itemTotal * rentDownPct / 100);
+  const minimumRequired = Math.min(
+    Math.max(0, itemMinimumRequired - thisItemPaymentsTotal - creditApplied),
+    balanceDue,
+  );
 
   // Shared payment allocations
   const payments = usePaymentAllocations({ balanceDue, minimumRequired });

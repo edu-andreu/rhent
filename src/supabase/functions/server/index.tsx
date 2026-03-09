@@ -15,6 +15,7 @@ import { registerReservationsRoutes } from "./routes/reservations.ts";
 import { registerCheckoutRoutes } from "./routes/checkout.ts";
 import { registerCashDrawerRoutes } from "./routes/cashDrawer.ts";
 import { registerConfigurationRoutes } from "./routes/configuration.ts";
+import { registerDashboardRoutes } from "./routes/dashboard.ts";
 import { registerUsersRoutes } from "./routes/users.ts";
 
 const app = new Hono();
@@ -157,6 +158,7 @@ registerReservationsRoutes(app, supabase);
 registerCheckoutRoutes(app, supabase, validateDateNotWeekendOrHoliday);
 registerCashDrawerRoutes(app, supabase);
 registerConfigurationRoutes(app, supabase);
+registerDashboardRoutes(app, supabase);
 registerUsersRoutes(app, supabase);
 
 // Register reservation conversion routes (existing separate module)
