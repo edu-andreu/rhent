@@ -394,63 +394,36 @@ export function registerReservationConversionRoutes(
 
       const customerId = (rental as any)?.customer_id || null;
 
-      // Handle Discount update if provided
+      // Handle Discount update if provided — per-item only
       if (discount) {
-        // Need rental_subtotal to calculate percentage if type is fixed
-        const { data: subtotalData } = await supabase
-          .from("v_rental_totals")
-          .select("rental_subtotal")
-          .eq("rental_id", rentalId)
+        const { data: currentItemData } = await supabase
+          .from("rental_items")
+          .select("unit_price, extra_days_amount")
+          .eq("id", rentalItemId)
           .single();
 
-        let newPercent = 0;
-        if (discount.type === 'percentage') {
-          newPercent = discount.value;
-        } else if (discount.type === 'fixed') {
-          const sub = parseFloat((subtotalData as any)?.rental_subtotal) || 0;
-          if (sub > 0) {
-            newPercent = (discount.value / sub) * 100;
+        if (currentItemData) {
+          const itemSubtotal = (parseFloat((currentItemData as any).unit_price) || 0) + (parseFloat((currentItemData as any).extra_days_amount) || 0);
+
+          let itemDiscountAmount = 0;
+          if (discount.type === 'percentage') {
+            itemDiscountAmount = Math.round(itemSubtotal * (discount.value / 100));
+          } else if (discount.type === 'fixed') {
+            itemDiscountAmount = Math.min(Math.round(discount.value), itemSubtotal);
           }
-        }
 
-        // Update rental with new discount percentage
-        const { error: updateDiscountError } = await supabase
-          .from("rentals")
-          .update({ discount_percent: newPercent })
-          .eq("id", rentalId);
+          const { error: updateItemError } = await supabase
+            .from("rental_items")
+            .update({
+              discount_amount: itemDiscountAmount,
+              updated_by: getCurrentUserDisplay(c),
+            })
+            .eq("id", rentalItemId);
 
-        if (updateDiscountError) {
-          console.log("Error updating discount during reservation conversion:", updateDiscountError);
-          // We continue, but log the error. The balance validation might fail if discount wasn't applied.
-        }
-
-        // CRITICAL: Recalculate and update discount_amount for ALL items in this rental
-        const { data: allRentalItems, error: fetchItemsError } = await supabase
-          .from("rental_items")
-          .select("id, unit_price, extra_days_amount")
-          .eq("rental_id", rentalId);
-
-        if (fetchItemsError) {
-          console.log("Error fetching rental items for discount recalculation:", fetchItemsError);
-        } else if (allRentalItems) {
-          // Update each item's discount_amount based on new discount_percent
-          for (const item of allRentalItems) {
-            const itemSubtotal = (parseFloat(item.unit_price) || 0) + (parseFloat(item.extra_days_amount) || 0);
-            const itemDiscountAmount = Math.round(itemSubtotal * (newPercent / 100));
-
-            const { error: updateItemError } = await supabase
-              .from("rental_items")
-              .update({
-                discount_amount: itemDiscountAmount,
-                updated_by: getCurrentUserDisplay(c),
-              })
-              .eq("id", item.id);
-
-            if (updateItemError) {
-              console.log(`Error updating discount_amount for item ${item.id}:`, updateItemError);
-            }
+          if (updateItemError) {
+            console.log(`Error updating discount_amount for item ${rentalItemId}:`, updateItemError);
           }
-          console.log(`Updated discount_amount for ${allRentalItems.length} items during reservation conversion`);
+          console.log(`Updated discount_amount for item ${rentalItemId} during reservation conversion: ${itemDiscountAmount}`);
         }
       }
 
@@ -471,37 +444,29 @@ export function registerReservationConversionRoutes(
         }
         console.log(`Updated extra days for rental item ${rentalItemId}: ${extraDays.days} days, amount: ${extraDays.amount}`);
 
-        // CRITICAL: When extra days change, we must recalculate discount_amount for ALL items
-        const { data: rental, error: rentalError } = await supabase
-          .from("rentals")
-          .select("discount_percent")
-          .eq("id", rentalId)
+        // Recalculate discount_amount for the current item only after extra days change
+        const { data: currentItemForDiscount } = await supabase
+          .from("rental_items")
+          .select("unit_price, extra_days_amount, discount_amount")
+          .eq("id", rentalItemId)
           .single();
 
-        if (!rentalError && rental) {
-          const discountPercent = parseFloat((rental as any).discount_percent) || 0;
+        if (currentItemForDiscount) {
+          const oldDiscount = parseFloat((currentItemForDiscount as any).discount_amount) || 0;
+          if (oldDiscount > 0) {
+            const oldSubtotal = (parseFloat((currentItemForDiscount as any).unit_price) || 0);
+            const newSubtotal = oldSubtotal + (extraDays.amount || 0);
+            const effectivePct = oldSubtotal > 0 ? (oldDiscount / oldSubtotal) : 0;
+            const newDiscountAmount = Math.round(newSubtotal * effectivePct);
 
-          if (discountPercent > 0) {
-            const { data: allRentalItems, error: fetchItemsError } = await supabase
+            await supabase
               .from("rental_items")
-              .select("id, unit_price, extra_days_amount")
-              .eq("rental_id", rentalId);
-
-            if (!fetchItemsError && allRentalItems) {
-              for (const item of allRentalItems) {
-                const itemSubtotal = (parseFloat(item.unit_price) || 0) + (parseFloat(item.extra_days_amount) || 0);
-                const itemDiscountAmount = Math.round(itemSubtotal * (discountPercent / 100));
-
-                await supabase
-                  .from("rental_items")
-                  .update({
-                    discount_amount: itemDiscountAmount,
-                    updated_by: getCurrentUserDisplay(c),
-                  })
-                  .eq("id", item.id);
-              }
-              console.log(`Recalculated discount_amount for ${allRentalItems.length} items after extra days change`);
-            }
+              .update({
+                discount_amount: newDiscountAmount,
+                updated_by: getCurrentUserDisplay(c),
+              })
+              .eq("id", rentalItemId);
+            console.log(`Recalculated discount_amount for item ${rentalItemId} after extra days change: ${newDiscountAmount}`);
           }
         }
       }

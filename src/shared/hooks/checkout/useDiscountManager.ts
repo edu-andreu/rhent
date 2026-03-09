@@ -45,23 +45,43 @@ export function useDiscountManager(options: UseDiscountManagerOptions = {}) {
     onDiscountChange?.();
   }, [tempDiscountValue, tempDiscountReason, discountType, onDiscountChange]);
 
+  const [prevDiscountValue, setPrevDiscountValue] = useState<number>(0);
+  const [prevDiscountType, setPrevDiscountType] = useState<'percentage' | 'fixed'>('percentage');
+  const [prevDiscountReason, setPrevDiscountReason] = useState<string>('');
+
   const handleCancelDiscount = useCallback(() => {
+    setDiscountValue(prevDiscountValue);
+    setDiscountType(prevDiscountType);
+    setDiscountReason(prevDiscountReason);
     setTempDiscountValue('');
     setTempDiscountReason('');
     setShowDiscountSection(false);
-  }, []);
+  }, [prevDiscountValue, prevDiscountType, prevDiscountReason]);
 
   const handleEditDiscount = useCallback(() => {
+    setPrevDiscountValue(discountValue);
+    setPrevDiscountType(discountType);
+    setPrevDiscountReason(discountReason);
     setTempDiscountValue(discountValue.toString());
     setTempDiscountReason(discountReason);
     setShowDiscountSection(true);
     setDiscountValue(0);
-  }, [discountValue, discountReason]);
+  }, [discountValue, discountType, discountReason]);
 
   const initializeFromServer = useCallback((percent: number) => {
     if (percent > 0) {
       setDiscountType('percentage');
       setDiscountValue(percent);
+    } else {
+      setDiscountValue(0);
+    }
+    setDiscountReason('');
+  }, []);
+
+  const initializeFromItemAmount = useCallback((amount: number) => {
+    if (amount > 0) {
+      setDiscountType('fixed');
+      setDiscountValue(amount);
     } else {
       setDiscountValue(0);
     }
@@ -94,6 +114,7 @@ export function useDiscountManager(options: UseDiscountManagerOptions = {}) {
     handleCancelDiscount,
     handleEditDiscount,
     initializeFromServer,
+    initializeFromItemAmount,
     resetDiscount,
   };
 }

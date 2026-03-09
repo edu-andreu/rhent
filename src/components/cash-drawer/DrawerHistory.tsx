@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { formatCurrency, formatDateTime, isCashOutTransaction, DrawerHistoryItem, DrawerTransaction, DrawerSummary } from "./useCashDrawer";
+import { getPrimaryTypeLabel, getSecondaryBadgeLabel, getDescriptionDisplay, getNotesDisplay } from "./TransactionTable";
 
 interface DrawerHistoryProps {
   drawerHistory: DrawerHistoryItem[];
@@ -158,15 +159,22 @@ export function DrawerHistory({
                                           {new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </TableCell>
                                         <TableCell className="py-2">
-                                          <Badge variant="outline" className="capitalize font-normal text-[11px] px-1.5 py-0">
-                                            {t.transactionType.replace(/_/g, ' ')}
-                                          </Badge>
+                                          <div className="flex items-center gap-1.5">
+                                            <Badge variant="outline" className="capitalize font-normal text-[11px] px-1.5 py-0">
+                                              {getPrimaryTypeLabel(t)}
+                                            </Badge>
+                                            {getSecondaryBadgeLabel(t) != null && (
+                                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
+                                                {getSecondaryBadgeLabel(t)}
+                                              </Badge>
+                                            )}
+                                          </div>
                                         </TableCell>
                                         <TableCell className="max-w-[200px] truncate py-2 text-xs">
-                                          {t.description || '-'}
+                                          {getDescriptionDisplay(t)}
                                         </TableCell>
                                         <TableCell className="max-w-[250px] truncate py-2 text-xs text-muted-foreground">
-                                          {t.notes || '-'}
+                                          {getNotesDisplay(t)}
                                         </TableCell>
                                         <TableCell className={`text-right font-medium py-2 ${isCashOutTransaction(t) ? 'text-red-600' : t.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
                                           {!isCashOutTransaction(t) && t.amount > 0 ? '+' : ''}${formatCurrency(Math.abs(t.amount))}

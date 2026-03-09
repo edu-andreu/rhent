@@ -102,8 +102,10 @@ export function useReservationCheckout({
 
   // Initialize from server when details load
   useEffect(() => {
-    if (details?.financials) {
-      discount.initializeFromServer(details.financials.discountPercent);
+    if (details) {
+      const currentItem = details.orderItems?.find(oi => oi.id === details.rentalItemId);
+      const itemDiscountAmount = currentItem?.discountAmount || 0;
+      discount.initializeFromItemAmount(itemDiscountAmount);
     }
     extraDays.initializeFromServer(details?.extraDaysInfo || null);
   }, [details]);
@@ -137,7 +139,10 @@ export function useReservationCheckout({
   const thisItemPaymentsTotal = details?.financials.thisItemPaymentsTotal ?? 0;
   const otherItemsTotal = details?.financials.otherItemsTotal || 0;
   const isMultiItemOrder = (details?.financials.itemCount || 1) > 1;
-  const initialDiscountPercent = details?.financials.discountPercent || 0;
+  const serverItemDiscountAmount = (() => {
+    const currentItem = details?.orderItems?.find(oi => oi.id === details?.rentalItemId);
+    return currentItem?.discountAmount || 0;
+  })();
   const rentDownPct = details?.config.rentDownPaymentPct || 50;
   const calcResult = calculateCheckout({
     items: [{
@@ -239,7 +244,7 @@ export function useReservationCheckout({
         itemId: details.itemId,
         payments: paymentsList,
         creditApplied,
-        discount: discount.discountValue > 0 ? {
+        discount: (discount.discountValue > 0 || discountAmount !== serverItemDiscountAmount) ? {
           type: discount.discountType,
           value: discount.discountValue,
           reason: discount.discountReason || undefined,
@@ -315,7 +320,7 @@ export function useReservationCheckout({
     tempDiscountReason: discount.tempDiscountReason,
     setTempDiscountReason: discount.setTempDiscountReason,
     itemSubtotal,
-    initialDiscountPercent,
+    initialDiscountPercent: serverItemDiscountAmount,
     handleEditDiscount: discount.handleEditDiscount,
     handleRemoveDiscount: discount.handleRemoveDiscount,
     handleApplyDiscount: discount.handleApplyDiscount,

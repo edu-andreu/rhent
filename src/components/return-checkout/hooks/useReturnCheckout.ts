@@ -178,7 +178,7 @@ export function useReturnCheckout({
   const lateDaysPricePct = returnDetails?.lateFeeConfig?.lateDaysPricePct || 75;
   const currentItemLateFee = lateFeeApplied ? lateFeeDays * lateDayRate : 0;
 
-  const serverDiscountPercent = returnDetails?.financials.discountPercent || 0;
+  const serverItemDiscountAmount = returnDetails?.itemFinancials?.discountAmount || 0;
 
   // Use calculation engine for the current item
   const currentItemBasePrice = extraDays.basePrice;
@@ -200,10 +200,7 @@ export function useReturnCheckout({
     alreadyPaid: 0,
   });
 
-  // Item-level discount: if user changed it, use calc engine; otherwise use server value
-  const discountAmount = discount.discountValue > 0
-    ? calcResult.discountAmount
-    : (returnDetails?.itemFinancials?.discountAmount || 0);
+  const discountAmount = calcResult.discountAmount;
 
   // Item-level payments from the server (per-item attribution)
   const paymentsTotal = returnDetails?.itemFinancials?.paymentsTotal || 0;
@@ -248,7 +245,7 @@ export function useReturnCheckout({
         ]);
 
         setReturnDetails(details);
-        discount.initializeFromServer(details.financials.discountPercent);
+        discount.initializeFromItemAmount(details.itemFinancials?.discountAmount || 0);
         extraDays.initializeFromServer(details.extraDaysInfo);
 
         // Initialize late fee
@@ -447,7 +444,7 @@ export function useReturnCheckout({
           })
         : [];
 
-      const discountChanged = discount.discountValue !== serverDiscountPercent || discount.discountType !== 'percentage';
+      const discountChanged = discountAmount !== serverItemDiscountAmount;
       const discountPayload = (discount.discountValue > 0 || discountChanged) ? {
         type: discount.discountType,
         value: discount.discountValue,
@@ -632,7 +629,7 @@ export function useReturnCheckout({
     balanceDue,
     hasBalance,
     setCreditApplied,
-    serverDiscountPercent: returnDetails?.financials.discountPercent || 0,
+    serverDiscountPercent: serverItemDiscountAmount,
     serverExtraDays: returnDetails?.extraDaysInfo?.extraDaysCount || 0,
 
     handleConfirm,

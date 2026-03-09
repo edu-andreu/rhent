@@ -6,14 +6,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { formatCurrency, isTransactionEditable, isCashOutTransaction, DrawerTransaction } from "./useCashDrawer";
 
 /** Primary type shown in the outline badge: only Cash Out, Cash In, or Checkout. */
-function getPrimaryTypeLabel(t: DrawerTransaction): "Cash Out" | "Cash In" | "Checkout" {
+export function getPrimaryTypeLabel(t: DrawerTransaction): "Cash Out" | "Cash In" | "Checkout" {
   if (["cash_out", "out", "cancellation"].includes(t.transactionType)) return "Cash Out";
   if (["cash_in", "in"].includes(t.transactionType)) return "Cash In";
   return "Checkout"; // checkout, return_checkout, reservation_checkout
 }
 
 /** Secondary badge label (expense, payroll, move money, cart, return, reservation, etc.). */
-function getSecondaryBadgeLabel(t: DrawerTransaction): string | null {
+export function getSecondaryBadgeLabel(t: DrawerTransaction): string | null {
   if (t.cashOutType === "payroll") return "Payroll";
   if (t.cashOutType === "move_money") return "Move Money";
   if (t.cashOutType === "expense") return "Expense";
@@ -24,13 +24,8 @@ function getSecondaryBadgeLabel(t: DrawerTransaction): string | null {
   return null;
 }
 
-interface TransactionTableProps {
-  transactions: DrawerTransaction[];
-  onEditTransaction: (t: DrawerTransaction) => void;
-  onDeleteTransaction: (t: DrawerTransaction) => void;
-}
-
-function getDescriptionDisplay(t: DrawerTransaction) {
+/** Description text for a transaction (category/employee/move money/description). */
+export function getDescriptionDisplay(t: DrawerTransaction) {
   if (t.cashOutType === 'move_money') {
     return t.description?.replace(/^Move money:\s*/i, '') || 'Move money';
   }
@@ -43,7 +38,8 @@ function getDescriptionDisplay(t: DrawerTransaction) {
   return t.description || '-';
 }
 
-function getNotesDisplay(t: DrawerTransaction) {
+/** Notes text for a transaction (payroll formula, description, or notes). */
+export function getNotesDisplay(t: DrawerTransaction) {
   if (t.cashOutType === 'move_money') {
     return t.notes || '-';
   }
@@ -54,6 +50,12 @@ function getNotesDisplay(t: DrawerTransaction) {
     return t.description;
   }
   return t.notes || '-';
+}
+
+interface TransactionTableProps {
+  transactions: DrawerTransaction[];
+  onEditTransaction: (t: DrawerTransaction) => void;
+  onDeleteTransaction: (t: DrawerTransaction) => void;
 }
 
 export function TransactionTable({

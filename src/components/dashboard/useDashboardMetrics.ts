@@ -137,23 +137,21 @@ export function useDashboardMetrics(
     const filteredRentals = dateRange
       ? rentals.filter(r => isInDateRange(new Date(r.startDate)))
       : rentals;
+    const filteredReservations = dateRange
+      ? reservations.filter(r => isInDateRange(new Date(r.reservationDate)))
+      : reservations;
     // ── Sales Tab ──
     const completedTx = filteredTransactions.filter(t => t.status === 'completed');
     const totalRevenue = completedTx.reduce((sum, t) => sum + t.amount, 0);
     const activeRentals = filteredRentals.filter(r => r.status === 'active');
 
-    // Count unique items by type (using inventoryItemId to avoid double-counting from multiple payments)
-    const uniqueItemsByType = completedTx.reduce((acc, t) => {
-      const itemId = t.inventoryItemId;
-      if (!itemId) return acc;
-      if (!acc.has(itemId)) acc.set(itemId, t.type);
-      return acc;
-    }, new Map<string, string>());
-    const itemsRented = [...uniqueItemsByType.values()].filter(type => type === 'rental').length;
-    const itemsReserved = [...uniqueItemsByType.values()].filter(type => type === 'reservation').length;
-    const itemsSold = [...uniqueItemsByType.values()].filter(type => type === 'sale').length;
-    const totalUniqueItems = uniqueItemsByType.size;
-    const avgTicket = totalUniqueItems > 0 ? totalRevenue / totalUniqueItems : 0;
+    // Count sales events: sold, rentals, and current reservations (each transaction counts as one item)
+    const itemsRented = completedTx.filter(t => t.type === 'rental').length;
+    const itemsReserved = completedTx.filter(t => t.type === 'reservation').length;
+    const itemsSold = completedTx.filter(t => t.type === 'sale').length;
+    const totalUniqueItems = itemsRented + itemsReserved + itemsSold;
+    // avgTicket will be recalculated below after netRevenue is known
+    let avgTicket = 0;
 
     const rentalTransactions = completedTx.filter(t => t.type === 'rental');
     const avgRentalValue = rentalTransactions.length > 0
@@ -179,7 +177,7 @@ export function useDashboardMetrics(
       refund: 'Refund',
       sale: 'Sold',
     };
-    const revenueByType = completedTx.reduce((acc, t) => {
+    const revenueByType = completedTx.filter(t => t.type !== 'refund').reduce((acc, t) => {
       const label = typeLabels[t.type] || t.type;
       acc[label] = (acc[label] || 0) + t.amount;
       return acc;
@@ -207,13 +205,15 @@ export function useDashboardMetrics(
         return d >= prevFrom && d < prevTo;
       });
       prevRevenue = prevFilteredTx.filter(t => t.status === 'completed').reduce((s, t) => s + t.amount, 0);
-      prevRentals = prevFilteredRentals.length;
+      const prevCompleted = prevFilteredTx.filter(t => t.status === 'completed');
+      prevRentals = prevCompleted.filter(t => ['rental', 'reservation', 'sale'].includes(t.type)).length;
       const prevRentalTx = prevFilteredTx.filter(t => t.type === 'rental' && t.status === 'completed');
       prevAvg = prevRentalTx.length > 0 ? prevRentalTx.reduce((s, t) => s + t.amount, 0) / prevRentalTx.length : 0;
       prevActive = prevFilteredRentals.filter(r => r.status === 'active').length;
     }
 
-    const salesCards = {
+    // salesCards.revenue will be updated below with netRevenue (after discounts)
+    let salesCards = {
       revenue: { value: totalRevenue, change: pctChange(totalRevenue, prevRevenue) },
       rentals: { value: totalUniqueItems, change: pctChange(totalUniqueItems, prevRentals) },
       avgRental: { value: avgRentalValue, change: pctChange(avgRentalValue, prevAvg) },
@@ -233,26 +233,40 @@ export function useDashboardMetrics(
       revenue,
     }));
 
-    // Popular items — count unique rental orders (relatedId) per inventory item
-    const itemUsageMap: Record<string, { orders: Set<string>; name: string; category: string; image: string }> = {};
-    for (const t of completedTx) {
+    // Popular items — count how many times each item was selected (rental/reservation/sale only; exclude refunds)
+    const itemUsageMap: Record<string, { count: number; name: string; category: string; image: string }> = {};
+    const txForPopular = completedTx.filter(t => t.type !== 'refund');
+    for (const t of txForPopular) {
       const itemId = t.inventoryItemId;
       if (!itemId) continue;
       if (!itemUsageMap[itemId]) {
-        itemUsageMap[itemId] = { orders: new Set(), name: t.itemName || 'Unknown', category: t.category || '', image: t.itemImage || '' };
+        itemUsageMap[itemId] = { count: 0, name: t.itemName || 'Unknown', category: t.category || '', image: t.itemImage || '' };
       }
-      itemUsageMap[itemId].orders.add(t.relatedId || t.id);
+      itemUsageMap[itemId].count += 1;
+    }
+    // Add current reserved items not yet converted to rentals (each reservation counts as one selection)
+    const currentReservations = filteredReservations.filter(r => r.status !== 'cancelled' && !r.rentalId);
+    for (const r of currentReservations) {
+      const itemId = r.dressId;
+      if (!itemId) continue;
+      if (!itemUsageMap[itemId]) {
+        itemUsageMap[itemId] = { count: 0, name: r.dressName || 'Unknown', category: r.category || '', image: r.dressImage || '' };
+      }
+      itemUsageMap[itemId].count += 1;
     }
     const popularDresses = Object.entries(itemUsageMap)
       .map(([dressId, info]) => ({
         dressId,
-        count: info.orders.size,
+        count: info.count,
         name: info.name,
         category: info.category,
         image: info.image,
       }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
+
+    // Unique items used (for utilization): distinct inventory items that were rented, reserved, or sold
+    const uniqueItemsUsed = Object.keys(itemUsageMap).length;
 
     // Overdue rentals
     const overdueRentals = activeRentals.filter(r => new Date(r.endDate) < today);
@@ -300,12 +314,21 @@ export function useDashboardMetrics(
       ? discountItems.reduce((sum, m) => sum + m.discountPercent, 0) / discountCount
       : 0;
 
-    // Refunds
+    // Refunds (already negative in payment amounts, so sum their absolute value for display)
     const refundTransactions = completedTx.filter(t => t.type === 'refund');
 
-    // Utilization rate
+    // Net revenue: gross payments already include refunds (negative amounts),
+    // but discounts are stored on rental_items, not in payments — subtract them
+    const netRevenue = totalRevenue - totalDiscounts;
+    salesCards = {
+      ...salesCards,
+      revenue: { value: netRevenue, change: pctChange(netRevenue, prevRevenue) },
+    };
+    avgTicket = totalUniqueItems > 0 ? netRevenue / totalUniqueItems : 0;
+
+    // Utilization rate (based on unique inventory items used: rented, reserved, or sold)
     const availableDresses = dresses.filter(d => d.available).length;
-    const itemsUsed = itemsRented + itemsReserved + itemsSold;
+    const itemsUsed = uniqueItemsUsed;
     const utilizationRate = dresses.length > 0 ? (itemsUsed / dresses.length) * 100 : 0;
 
     // ── Expenses Tab ──
