@@ -2,13 +2,29 @@ import { DollarSign, Package, BarChart3, Clock, AlertTriangle, Calendar, Percent
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Progress } from '../ui/progress';
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, TooltipProps } from 'recharts';
 import { formatCurrencyARS } from '../../shared/format/currency';
 import type { DashboardMetrics } from './useDashboardMetrics';
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#6366f1'];
 
 const TOOLTIP_STYLE = { background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' };
+
+/** Tooltip with fixed foreground color so amount text stays readable over bars */
+function BarChartTooltip({ active, payload, label }: TooltipProps<number, string>) {
+  if (!active || !payload?.length) return null;
+  const item = payload[0];
+  return (
+    <div className="rounded-md border bg-card px-3 py-2 shadow-md" style={TOOLTIP_STYLE}>
+      <p className="text-sm font-medium" style={{ color: 'hsl(var(--foreground))' }}>
+        {label}
+      </p>
+      <p className="text-sm font-medium" style={{ color: 'hsl(var(--foreground))' }}>
+        {formatCurrencyARS(item.value as number)}
+      </p>
+    </div>
+  );
+}
 
 interface SalesTabProps {
   metrics: DashboardMetrics;
@@ -188,10 +204,7 @@ export function SalesTab({ metrics, filterLabel, dateFilter }: SalesTabProps) {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" tickFormatter={(v) => formatCurrencyARS(v)} />
                   <YAxis type="category" dataKey="method" width={110} />
-                  <Tooltip
-                    formatter={(value: number) => formatCurrencyARS(value)}
-                    contentStyle={TOOLTIP_STYLE}
-                  />
+                  <Tooltip content={<BarChartTooltip />} />
                   <Bar dataKey="amount" fill="#3b82f6" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -218,10 +231,7 @@ export function SalesTab({ metrics, filterLabel, dateFilter }: SalesTabProps) {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" tickFormatter={(v) => formatCurrencyARS(v)} />
                   <YAxis type="category" dataKey="type" width={110} />
-                  <Tooltip
-                    formatter={(value: number) => formatCurrencyARS(value)}
-                    contentStyle={TOOLTIP_STYLE}
-                  />
+                  <Tooltip content={<BarChartTooltip />} />
                   <Bar dataKey="amount" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
