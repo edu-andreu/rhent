@@ -127,6 +127,8 @@ export interface CashTransaction {
   description: string;
   category: string;
   date: Date;
+  /** Payment method label (e.g. "Efectivo", "Ualá") for display in Expenses/Money tabs. */
+  paymentMethod?: string;
 }
 
 export interface Customer {

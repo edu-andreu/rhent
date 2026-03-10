@@ -121,4 +121,145 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
       return c.json({ error: `Failed to load revenue transactions: ${error.message}` }, 500);
     }
   });
+
+  // GET /dashboard/cash-transactions - Cash in/out + vault transfers in date range for Expenses/Money tabs
+  app.get("/make-server-918f1e54/dashboard/cash-transactions", async (c) => {
+    try {
+      const from = c.req.query("from");
+      const to = c.req.query("to");
+      if (!from || !to) {
+        return c.json({ error: "Query params 'from' and 'to' (ISO date strings) are required" }, 400);
+      }
+
+      const { data: transactions, error: txnError } = await supabase
+        .from("drawer_transactions")
+        .select(`
+          drawer_txn_id,
+          txn_type,
+          amount,
+          description,
+          created_at,
+          category_id,
+          cash_out_type,
+          drawer_transaction_categories (
+            name,
+            category
+          )
+        `)
+        .gte("created_at", from)
+        .lte("created_at", to)
+        .order("created_at", { ascending: true });
+
+      if (txnError) {
+        console.log("Error fetching dashboard cash transactions:", txnError);
+        return c.json({ error: `Failed to fetch cash transactions: ${txnError.message}` }, 500);
+      }
+
+      const cashTransactions: Array<{
+        id: string;
+        type: "in" | "out";
+        amount: number;
+        description: string;
+        category: string;
+        date: string;
+        paymentMethod?: string;
+      }> = [];
+
+      const vaultTransfers: Array<{
+        id: string;
+        fromDrawer: string;
+        amount: number;
+        date: string;
+        transferredBy: string;
+      }> = [];
+
+      for (const txn of transactions || []) {
+        const rawAmount = parseFloat((txn as any).amount) || 0;
+        const amount = Math.round(rawAmount);
+        const date = (txn as any).created_at as string;
+
+        // Move money is treated as a vault transfer, not an expense
+        if ((txn as any).cash_out_type === "move_money") {
+          vaultTransfers.push({
+            id: (txn as any).drawer_txn_id,
+            fromDrawer: "Showroom Principal",
+            amount: Math.abs(amount),
+            date,
+            transferredBy: (txn as any).description || "Admin",
+          });
+          continue;
+        }
+
+        const txnType = (txn as any).txn_type as string;
+        const isCashFlowType = ["cash_in", "cash_out", "in", "out", "cancellation"].includes(txnType);
+        if (!isCashFlowType) continue;
+
+        const direction: "in" | "out" = ["cash_out", "out", "cancellation"].includes(txnType) ? "out" : "in";
+        const cat = (txn as any).drawer_transaction_categories;
+        let category: string;
+        if ((txn as any).cash_out_type === "payroll") {
+          category = "Payroll";
+        } else if (cat) {
+          const catCol = cat.category;
+          category = (catCol && String(catCol).trim() !== "") ? String(catCol).trim() : (cat.name || "Other");
+        } else {
+          category = txnType === "cancellation" ? "Cancellation" : "Other";
+        }
+
+        cashTransactions.push({
+          id: (txn as any).drawer_txn_id,
+          type: direction,
+          amount: Math.abs(amount),
+          description: (txn as any).description || "",
+          category,
+          date,
+          paymentMethod: "Efectivo",
+        });
+      }
+
+      // Append manual expenses (non-cash and cash) from expenses table
+      const { data: expensesRows, error: expensesError } = await supabase
+        .from("expenses")
+        .select(`
+          id,
+          amount,
+          expense_date,
+          description,
+          drawer_transaction_categories (
+            name,
+            category
+          ),
+          payments_methods (
+            payment_method
+          )
+        `)
+        .gte("expense_date", from)
+        .lte("expense_date", to)
+        .order("expense_date", { ascending: true });
+
+      if (!expensesError && expensesRows && expensesRows.length > 0) {
+        for (const row of expensesRows) {
+          const amount = Math.abs(Math.round(parseFloat((row as any).amount) || 0));
+          const cat = (row as any).drawer_transaction_categories;
+          const catCol = cat?.category;
+          const category = (catCol && String(catCol).trim() !== "") ? String(catCol).trim() : (cat?.name || "Other");
+          const paymentMethod = (row as any).payments_methods?.payment_method || "Other";
+          cashTransactions.push({
+            id: (row as any).id,
+            type: "out",
+            amount,
+            description: (row as any).description || "",
+            category,
+            date: (row as any).expense_date,
+            paymentMethod,
+          });
+        }
+      }
+
+      return c.json({ cashTransactions, vaultTransfers });
+    } catch (error: any) {
+      console.log("Error in dashboard/cash-transactions:", error);
+      return c.json({ error: `Failed to load cash transactions: ${error.message}` }, 500);
+    }
+  });
 }

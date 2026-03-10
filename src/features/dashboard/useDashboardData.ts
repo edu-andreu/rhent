@@ -24,22 +24,13 @@ export interface VaultTransfer {
   transferredBy: string;
 }
 
-interface DrawerTransactionRaw {
-  transactionId: string;
-  transactionType: string;
-  amount: number;
-  createdAt: string;
-  referenceId: string;
-  referenceType: string;
-  paymentMethod: string;
-  notes?: string;
-  description?: string;
-  categoryName?: string | null;
-  cashOutType?: string | null;
-}
-
 interface RevenueTransactionsResponse {
   transactions: Array<Omit<Transaction, "date"> & { date: string }>;
+}
+
+interface DashboardCashTransactionsResponse {
+  cashTransactions: Array<Omit<CashTransaction, "date"> & { date: string }>;
+  vaultTransfers: Array<Omit<VaultTransfer, "date"> & { date: string }>;
 }
 
 interface DrawerCurrentResponse {
@@ -54,93 +45,7 @@ interface DrawerCurrentResponse {
     totalCashOut: number;
     expectedBalance: number;
   } | null;
-  transactions: DrawerTransactionRaw[];
-}
-
-function mapDrawerTransactions(
-  raw: DrawerTransactionRaw[],
-): { transactions: Transaction[]; cashTransactions: CashTransaction[]; vaultTransfers: VaultTransfer[] } {
-  const transactions: Transaction[] = [];
-  const cashTransactions: CashTransaction[] = [];
-  const vaultTransfers: VaultTransfer[] = [];
-
-  for (const t of raw) {
-    const date = new Date(t.createdAt);
-
-    if (t.cashOutType === "move_money") {
-      vaultTransfers.push({
-        id: t.transactionId,
-        fromDrawer: "Showroom Principal",
-        amount: Math.abs(t.amount),
-        date,
-        transferredBy: t.description || "Admin",
-      });
-      continue;
-    }
-
-    const isCheckoutType = ["checkout", "return_checkout", "reservation_checkout"].includes(t.transactionType);
-    if (isCheckoutType) {
-      const txType = t.transactionType === "checkout"
-        ? "rental"
-        : t.transactionType === "reservation_checkout"
-          ? "reservation"
-          : "rental";
-
-      transactions.push({
-        id: t.transactionId,
-        type: txType as Transaction["type"],
-        relatedId: t.referenceId,
-        itemName: t.description || "",
-        amount: Math.abs(t.amount),
-        status: "completed",
-        paymentMethodId: "",
-        paymentMethod: t.paymentMethod || "Efectivo",
-        date,
-        description: t.description || "",
-      });
-    }
-
-    if (t.transactionType === "cancellation") {
-      transactions.push({
-        id: t.transactionId,
-        type: "refund",
-        relatedId: t.referenceId,
-        itemName: t.description || "",
-        amount: Math.abs(t.amount),
-        status: "completed",
-        paymentMethodId: "",
-        paymentMethod: t.paymentMethod || "Efectivo",
-        date,
-        description: t.description || "",
-      });
-    }
-
-    const isCashInOut = ["cash_in", "cash_out", "in", "out"].includes(t.transactionType);
-    if (isCashInOut) {
-      const direction = ["cash_out", "out"].includes(t.transactionType) ? "out" : "in";
-      cashTransactions.push({
-        id: t.transactionId,
-        type: direction,
-        amount: Math.abs(t.amount),
-        description: t.description || t.notes || "",
-        category: t.categoryName || "Other",
-        date,
-      });
-    }
-
-    if (t.transactionType === "cancellation") {
-      cashTransactions.push({
-        id: `${t.transactionId}-cash`,
-        type: "out",
-        amount: Math.abs(t.amount),
-        description: t.description || "Cancellation refund",
-        category: "Cancellation",
-        date,
-      });
-    }
-  }
-
-  return { transactions, cashTransactions, vaultTransfers };
+  transactions: unknown[];
 }
 
 export interface DashboardData {
@@ -184,14 +89,15 @@ export function useDashboardData(): DashboardData {
             `dashboard/revenue-transactions?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`,
             authInit
           ),
+          getFunction<DashboardCashTransactionsResponse>(
+            `dashboard/cash-transactions?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`,
+            authInit
+          ),
         ]);
 
         if (results[0].status === "fulfilled") {
           const drawerData = results[0].value;
           setOpeningBalance(drawerData.summary?.openingCash ?? drawerData.drawer?.openingCash ?? 0);
-          const mapped = mapDrawerTransactions(drawerData.transactions || []);
-          setCashTransactions(mapped.cashTransactions);
-          setVaultTransfers(mapped.vaultTransfers);
         }
 
         if (results[1].status === "fulfilled") {
@@ -210,6 +116,20 @@ export function useDashboardData(): DashboardData {
             date: new Date(t.date),
           }));
           setTransactions(txns);
+        }
+
+        if (results[4].status === "fulfilled") {
+          const data = results[4].value;
+          const cashTxns: CashTransaction[] = (data.cashTransactions || []).map((t) => ({
+            ...t,
+            date: new Date(t.date),
+          }));
+          const vaults: VaultTransfer[] = (data.vaultTransfers || []).map((vt) => ({
+            ...vt,
+            date: new Date(vt.date),
+          }));
+          setCashTransactions(cashTxns);
+          setVaultTransfers(vaults);
         }
       } catch {
         // Graceful degradation - dashboard works with empty data
