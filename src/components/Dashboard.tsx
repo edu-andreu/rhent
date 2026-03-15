@@ -6,7 +6,7 @@ import { SalesTab } from './dashboard/SalesTab';
 import { ExpensesTab } from './dashboard/ExpensesTab';
 import { MoneyTab } from './dashboard/MoneyTab';
 import { useDashboardMetrics } from './dashboard/useDashboardMetrics';
-import type { DashboardPaymentMethod, DashboardOwner, VaultTransfer } from '../features/dashboard/useDashboardData';
+import type { DashboardPaymentMethod, DashboardOwner, VaultTransfer, OwnerDistribution } from '../features/dashboard/useDashboardData';
 import { useAuth } from '../providers/AuthProvider';
 
 const DASHBOARD_SUBTABS = [
@@ -36,6 +36,8 @@ interface DashboardProps {
   paymentMethods: DashboardPaymentMethod[];
   owners: DashboardOwner[];
   vaultTransfers: VaultTransfer[];
+  ownerDistributions: OwnerDistribution[];
+  refetchDashboard?: () => void | Promise<void>;
 }
 
 export function Dashboard({
@@ -48,6 +50,8 @@ export function Dashboard({
   paymentMethods,
   owners,
   vaultTransfers,
+  ownerDistributions,
+  refetchDashboard,
 }: DashboardProps) {
   const { permissions } = useAuth();
   const allowedSubTabs = useMemo(() => {
@@ -108,7 +112,7 @@ export function Dashboard({
 
   const metrics = useDashboardMetrics(
     dresses, rentals, reservations, transactions, cashTransactions,
-    openingBalance, dateRange, paymentMethods, vaultTransfers,
+    openingBalance, dateRange, paymentMethods, vaultTransfers, ownerDistributions,
   );
 
   const filterLabel = FILTER_LABELS[dateFilter] || 'custom range';
@@ -141,11 +145,22 @@ export function Dashboard({
       )}
 
       {allowedSubTabs.some((s) => s.value === 'expenses') && activeTab === 'expenses' && (
-        <ExpensesTab metrics={metrics} filterLabel={filterLabel} />
+        <ExpensesTab
+          metrics={metrics}
+          filterLabel={filterLabel}
+          paymentMethods={paymentMethods}
+          onExpenseAdded={refetchDashboard}
+        />
       )}
 
       {allowedSubTabs.some((s) => s.value === 'money') && activeTab === 'money' && (
-        <MoneyTab metrics={metrics} filterLabel={filterLabel} owners={owners} />
+        <MoneyTab
+          metrics={metrics}
+          filterLabel={filterLabel}
+          owners={owners}
+          paymentMethods={paymentMethods}
+          onDistributionAdded={refetchDashboard}
+        />
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Dress, Rental, Reservation, Transaction, CashTransaction } from '../../types';
-import type { DashboardPaymentMethod, DashboardOwner, VaultTransfer } from '../../features/dashboard/useDashboardData';
+import type { DashboardPaymentMethod, DashboardOwner, VaultTransfer, OwnerDistribution } from '../../features/dashboard/useDashboardData';
 
 export interface DateRange {
   from: Date;
@@ -101,6 +101,7 @@ export interface DashboardMetrics {
   totalBalance: number;
   filteredVaultTransfers: VaultTransfer[];
   totalVaultCash: number;
+  filteredOwnerDistributions: OwnerDistribution[];
 }
 
 function pctChange(curr: number, prev: number): number {
@@ -118,6 +119,7 @@ export function useDashboardMetrics(
   dateRange: DateRange | null,
   paymentMethods: DashboardPaymentMethod[],
   vaultTransfers: VaultTransfer[],
+  ownerDistributions: OwnerDistribution[],
 ): DashboardMetrics {
   return useMemo(() => {
     const now = new Date();
@@ -140,8 +142,13 @@ export function useDashboardMetrics(
     const filteredReservations = dateRange
       ? reservations.filter(r => isInDateRange(new Date(r.reservationDate)))
       : reservations;
-    // ── Sales Tab ──
-    const completedTx = filteredTransactions.filter(t => t.status === 'completed');
+
+    const isStoreCredit = (method: string) => /store\s*credit/i.test((method || '').trim());
+
+    // ── Sales Tab ── (exclude Store Credit so Sales / Total Income reflect only real money in)
+    const completedTx = filteredTransactions.filter(
+      t => t.status === 'completed' && !isStoreCredit(t.paymentMethod)
+    );
     const totalRevenue = completedTx.reduce((sum, t) => sum + t.amount, 0);
     const activeRentals = filteredRentals.filter(r => r.status === 'active');
 
@@ -204,7 +211,9 @@ export function useDashboardMetrics(
         const d = new Date(r.startDate);
         return d >= prevFrom && d < prevTo;
       });
-      prevRevenue = prevFilteredTx.filter(t => t.status === 'completed').reduce((s, t) => s + t.amount, 0);
+      prevRevenue = prevFilteredTx
+        .filter(t => t.status === 'completed' && !isStoreCredit(t.paymentMethod))
+        .reduce((s, t) => s + t.amount, 0);
       const prevCompleted = prevFilteredTx.filter(t => t.status === 'completed');
       prevRentals = prevCompleted.filter(t => ['rental', 'reservation', 'sale'].includes(t.type)).length;
       const prevRentalTx = prevFilteredTx.filter(t => t.type === 'rental' && t.status === 'completed');
@@ -355,22 +364,38 @@ export function useDashboardMetrics(
       : vaultTransfers;
     const totalVaultCash = filteredVaultTransfers.reduce((sum, vt) => sum + vt.amount, 0);
 
-    const completedTxForMoney = dateRange
+    const filteredOwnerDistributions = dateRange
+      ? ownerDistributions.filter((od) => {
+          const d = new Date(od.distribution_date);
+          return d >= dateRange.from && d <= dateRange.to;
+        })
+      : ownerDistributions;
+
+    const completedTxForMoney = (dateRange
       ? transactions.filter(t => { const d = new Date(t.date); return t.status === 'completed' && d >= dateRange.from && d <= dateRange.to; })
-      : transactions.filter(t => t.status === 'completed');
+      : transactions.filter(t => t.status === 'completed')
+    ).filter(t => !isStoreCredit(t.paymentMethod));
     const incomeByMethod: Record<string, number> = {};
     completedTxForMoney.forEach(t => {
       const methodName = t.paymentMethod.replace(/\s*\(.*\)$/, '').trim() || 'Other';
       incomeByMethod[methodName] = (incomeByMethod[methodName] || 0) + t.amount;
     });
-    const expensesByMethod: Record<string, number> = { 'Efectivo': totalCashOut };
+    const expensesByMethod: Record<string, number> = cashOutTransactions.reduce((acc, t) => {
+      const methodName = t.paymentMethod.replace(/\s*\(.*\)$/, '').trim() || 'Other';
+      acc[methodName] = (acc[methodName] || 0) + t.amount;
+      return acc;
+    }, {} as Record<string, number>);
 
-    const activeMethods = paymentMethods.filter(pm => pm.status === 'On' || pm.status === 'active');
+    const activeMethods = paymentMethods.filter(
+      pm => (pm.status === 'On' || pm.status === 'active') && pm.payment_user_enabled === 1
+    );
     const methodBalances: MethodBalance[] = activeMethods.map(pm => {
       const income = incomeByMethod[pm.payment_method] || 0;
-      const expenses = expensesByMethod[pm.payment_method] || 0;
       const isCash = pm.payment_type === 'cash';
-      const balance = isCash ? totalVaultCash - expenses : income - expenses;
+      const expenses = isCash
+        ? (expensesByMethod[pm.payment_method] || expensesByMethod["Efectivo"] || 0)
+        : (expensesByMethod[pm.payment_method] || 0);
+      const balance = income - expenses;
       return {
         id: pm.id,
         method: pm.payment_method,
@@ -383,9 +408,12 @@ export function useDashboardMetrics(
       };
     });
 
-    const totalIncome = methodBalances.reduce((sum, m) => sum + m.income, 0);
-    const totalExpenses = methodBalances.reduce((sum, m) => sum + m.expenses, 0);
-    const totalBalance = methodBalances.reduce((sum, m) => sum + m.balance, 0);
+    // Total Income matches Sales tab (net revenue after discounts)
+    const totalIncome = netRevenue;
+    // Total Expenses matches Expenses tab (all cash-out / expenses)
+    const totalExpenses = totalCashOut;
+    // Available Balance = Total Income − Total Expenses
+    const totalBalance = totalIncome - totalExpenses;
 
     return {
       salesCards,
@@ -427,6 +455,7 @@ export function useDashboardMetrics(
       totalBalance,
       filteredVaultTransfers,
       totalVaultCash,
+      filteredOwnerDistributions,
     };
-  }, [dresses, rentals, reservations, transactions, cashTransactions, openingBalance, dateRange, paymentMethods, vaultTransfers]);
+  }, [dresses, rentals, reservations, transactions, cashTransactions, openingBalance, dateRange, paymentMethods, vaultTransfers, ownerDistributions]);
 }

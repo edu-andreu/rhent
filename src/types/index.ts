@@ -126,6 +126,8 @@ export interface CashTransaction {
   amount: number;
   description: string;
   category: string;
+  /** Name from drawer_transaction_categories for display in Description column. */
+  categoryName?: string;
   date: Date;
   /** Payment method label (e.g. "Efectivo", "Ualá") for display in Expenses/Money tabs. */
   paymentMethod?: string;

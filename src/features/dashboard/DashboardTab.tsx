@@ -16,7 +16,9 @@ export function DashboardTab({ dresses, rentals, reservations }: DashboardTabPro
     paymentMethods,
     owners,
     vaultTransfers,
+    ownerDistributions,
     loading,
+    refetch,
   } = useDashboardData();
 
   if (loading) {
@@ -42,6 +44,8 @@ export function DashboardTab({ dresses, rentals, reservations }: DashboardTabPro
         paymentMethods={paymentMethods}
         owners={owners}
         vaultTransfers={vaultTransfers}
+        ownerDistributions={ownerDistributions}
+        refetchDashboard={refetch}
       />
     </div>
   );

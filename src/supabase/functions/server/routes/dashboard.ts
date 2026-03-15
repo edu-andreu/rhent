@@ -1,5 +1,6 @@
 import type { Hono } from "npm:hono";
 import type { SupabaseClient } from "npm:@supabase/supabase-js";
+import { getCurrentUserDisplay } from "../helpers/auth.ts";
 
 /**
  * Dashboard routes use the payments table (and related data) for revenue metrics,
@@ -161,6 +162,7 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
         amount: number;
         description: string;
         category: string;
+        categoryName?: string;
         date: string;
         paymentMethod?: string;
       }> = [];
@@ -197,13 +199,17 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
         const direction: "in" | "out" = ["cash_out", "out", "cancellation"].includes(txnType) ? "out" : "in";
         const cat = (txn as any).drawer_transaction_categories;
         let category: string;
+        let categoryName: string | undefined;
         if ((txn as any).cash_out_type === "payroll") {
           category = "Payroll";
+          categoryName = "Payroll";
         } else if (cat) {
           const catCol = cat.category;
           category = (catCol && String(catCol).trim() !== "") ? String(catCol).trim() : (cat.name || "Other");
+          categoryName = cat.name || category;
         } else {
           category = txnType === "cancellation" ? "Cancellation" : "Other";
+          categoryName = category;
         }
 
         cashTransactions.push({
@@ -212,6 +218,7 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
           amount: Math.abs(amount),
           description: (txn as any).description || "",
           category,
+          categoryName,
           date,
           paymentMethod: "Efectivo",
         });
@@ -243,6 +250,7 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
           const cat = (row as any).drawer_transaction_categories;
           const catCol = cat?.category;
           const category = (catCol && String(catCol).trim() !== "") ? String(catCol).trim() : (cat?.name || "Other");
+          const categoryName = cat?.name || category;
           const paymentMethod = (row as any).payments_methods?.payment_method || "Other";
           cashTransactions.push({
             id: (row as any).id,
@@ -250,6 +258,7 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
             amount,
             description: (row as any).description || "",
             category,
+            categoryName,
             date: (row as any).expense_date,
             paymentMethod,
           });
@@ -260,6 +269,230 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
     } catch (error: any) {
       console.log("Error in dashboard/cash-transactions:", error);
       return c.json({ error: `Failed to load cash transactions: ${error.message}` }, 500);
+    }
+  });
+
+  // POST /dashboard/expense - Create a manual expense (stored in expenses table, shown in Expenses tab)
+  app.post("/make-server-918f1e54/dashboard/expense", async (c) => {
+    try {
+      const body = await c.req.json();
+      const { amount, category_id, payment_method_id, description } = body;
+
+      if (amount === undefined || amount === null) {
+        return c.json({ error: "Amount is required" }, 400);
+      }
+      const amountNum = parseFloat(amount);
+      if (isNaN(amountNum) || amountNum <= 0) {
+        return c.json({ error: "Amount must be a positive number" }, 400);
+      }
+
+      if (!category_id || typeof category_id !== "string") {
+        return c.json({ error: "Category is required" }, 400);
+      }
+      const { data: categoryRow, error: catError } = await supabase
+        .from("drawer_transaction_categories")
+        .select("id, direction")
+        .eq("id", category_id)
+        .single();
+      if (catError || !categoryRow) {
+        return c.json({ error: "Invalid category" }, 400);
+      }
+      if ((categoryRow as any).direction !== "out") {
+        return c.json({ error: "Category must be an expense (out) category" }, 400);
+      }
+
+      if (!payment_method_id || typeof payment_method_id !== "string") {
+        return c.json({ error: "Payment method is required" }, 400);
+      }
+      const { data: methodRow, error: methodError } = await supabase
+        .from("payments_methods")
+        .select("id")
+        .eq("id", payment_method_id)
+        .single();
+      if (methodError || !methodRow) {
+        return c.json({ error: "Invalid payment method" }, 400);
+      }
+
+      const descriptionVal =
+        description != null && typeof description === "string" && description.trim() !== ""
+          ? description.trim()
+          : null;
+
+      const { data: expense, error: insertError } = await supabase
+        .from("expenses")
+        .insert({
+          amount: amountNum,
+          expense_date: new Date().toISOString(),
+          category_id,
+          payment_method_id,
+          description: descriptionVal,
+        })
+        .select("id, amount, expense_date, category_id, payment_method_id, description")
+        .single();
+
+      if (insertError) {
+        console.log("Error creating expense:", insertError);
+        return c.json({ error: `Failed to create expense: ${insertError.message}` }, 500);
+      }
+
+      return c.json(expense, 201);
+    } catch (error: any) {
+      console.log("Error in dashboard/expense:", error);
+      return c.json({ error: `Failed to create expense: ${error.message}` }, 500);
+    }
+  });
+
+  // GET /dashboard/owner-distributions - Owner distributions in date range (for Money tab)
+  app.get("/make-server-918f1e54/dashboard/owner-distributions", async (c) => {
+    try {
+      const from = c.req.query("from");
+      const to = c.req.query("to");
+      if (!from || !to) {
+        return c.json({ error: "Query params 'from' and 'to' (ISO date strings) are required" }, 400);
+      }
+
+      const { data: rows, error } = await supabase
+        .from("owner_distributions")
+        .select(`
+          id,
+          owner_id,
+          payment_method_id,
+          amount,
+          description,
+          distribution_date,
+          app_users ( full_name ),
+          payments_methods ( payment_method )
+        `)
+        .gte("distribution_date", from)
+        .lte("distribution_date", to)
+        .order("distribution_date", { ascending: false });
+
+      if (error) {
+        console.log("Error fetching owner distributions:", error);
+        return c.json({ error: `Failed to fetch owner distributions: ${error.message}` }, 500);
+      }
+
+      const ownerDistributions = (rows || []).map((r: any) => ({
+        id: r.id,
+        owner_id: r.owner_id,
+        owner_name: r.app_users?.full_name ?? "Unknown",
+        payment_method_id: r.payment_method_id,
+        payment_method: r.payments_methods?.payment_method ?? "Other",
+        amount: parseFloat(r.amount) || 0,
+        description: r.description ?? null,
+        distribution_date: r.distribution_date,
+      }));
+
+      return c.json({ ownerDistributions });
+    } catch (error: any) {
+      console.log("Error in dashboard/owner-distributions GET:", error);
+      return c.json({ error: `Failed to load owner distributions: ${error.message}` }, 500);
+    }
+  });
+
+  // POST /dashboard/owner-distribution - Record a distribution to an owner
+  app.post("/make-server-918f1e54/dashboard/owner-distribution", async (c) => {
+    try {
+      const body = await c.req.json();
+      const { owner_id, payment_method_id, amount, description, distribution_date: bodyDate } = body;
+
+      if (!owner_id || typeof owner_id !== "string") {
+        return c.json({ error: "Owner is required" }, 400);
+      }
+      const { data: ownerRow, error: ownerError } = await supabase
+        .from("app_users")
+        .select("id, role")
+        .eq("id", owner_id)
+        .single();
+      if (ownerError || !ownerRow) {
+        return c.json({ error: "Invalid owner" }, 400);
+      }
+
+      if (!payment_method_id || typeof payment_method_id !== "string") {
+        return c.json({ error: "Payment method is required" }, 400);
+      }
+      const { data: methodRow, error: methodError } = await supabase
+        .from("payments_methods")
+        .select("id")
+        .eq("id", payment_method_id)
+        .single();
+      if (methodError || !methodRow) {
+        return c.json({ error: "Invalid payment method" }, 400);
+      }
+
+      if (amount === undefined || amount === null) {
+        return c.json({ error: "Amount is required" }, 400);
+      }
+      const amountNum = parseFloat(amount);
+      if (isNaN(amountNum) || amountNum <= 0) {
+        return c.json({ error: "Amount must be a positive number" }, 400);
+      }
+
+      const descriptionVal =
+        description != null && typeof description === "string" && description.trim() !== ""
+          ? description.trim()
+          : null;
+
+      let distributionDate: string;
+      if (bodyDate != null && typeof bodyDate === "string" && bodyDate.trim() !== "") {
+        const parsed = new Date(bodyDate.trim());
+        if (isNaN(parsed.getTime())) {
+          return c.json({ error: "Invalid distribution date" }, 400);
+        }
+        distributionDate = parsed.toISOString();
+      } else {
+        distributionDate = new Date().toISOString();
+      }
+
+      const createdBy = getCurrentUserDisplay(c);
+
+      const { data: distribution, error: insertError } = await supabase
+        .from("owner_distributions")
+        .insert({
+          owner_id,
+          payment_method_id,
+          amount: amountNum,
+          description: descriptionVal,
+          distribution_date: distributionDate,
+          created_by: createdBy,
+        })
+        .select("id, owner_id, payment_method_id, amount, description, distribution_date")
+        .single();
+
+      if (insertError) {
+        console.log("Error creating owner distribution:", insertError);
+        return c.json({ error: `Failed to create owner distribution: ${insertError.message}` }, 500);
+      }
+
+      return c.json(distribution, 201);
+    } catch (error: any) {
+      console.log("Error in dashboard/owner-distribution:", error);
+      return c.json({ error: `Failed to create owner distribution: ${error.message}` }, 500);
+    }
+  });
+
+  // DELETE /dashboard/owner-distribution/:id - Delete an owner distribution
+  app.delete("/make-server-918f1e54/dashboard/owner-distribution/:id", async (c) => {
+    try {
+      const id = c.req.param("id");
+      if (!id) {
+        return c.json({ error: "Distribution id is required" }, 400);
+      }
+
+      const { error: deleteError } = await supabase
+        .from("owner_distributions")
+        .delete()
+        .eq("id", id);
+
+      if (deleteError) {
+        console.log("Error deleting owner distribution:", deleteError);
+        return c.json({ error: `Failed to delete owner distribution: ${deleteError.message}` }, 500);
+      }
+
+      return c.json({ deleted: true }, 200);
+    } catch (error: any) {
+      console.log("Error in dashboard/owner-distribution DELETE:", error);
+      return c.json({ error: `Failed to delete owner distribution: ${error.message}` }, 500);
     }
   });
 }
