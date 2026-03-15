@@ -329,128 +329,149 @@ export function MoneyTab({ metrics, filterLabel, owners, paymentMethods, onDistr
 
       {/* Owner Distribution (alone at the end) */}
       <Card className="border-emerald-200 dark:border-emerald-900">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-4 w-4" /> Owner Distribution
-            </CardTitle>
-            <CardDescription>Distributions of funds to owners for {filterLabel}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {metrics.filteredOwnerDistributions.length > 0 ? (
-                <>
-                  <div className="space-y-3">
-                    {[...metrics.filteredOwnerDistributions]
-                      .sort((a, b) => new Date(b.distribution_date).getTime() - new Date(a.distribution_date).getTime())
-                      .map((od) => (
-                        <div key={od.id} className="py-2 border-b last:border-b-0">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 text-sm">
-                                {(od.owner_name || '?').charAt(0)}
-                              </div>
-                              <p className="text-sm font-medium">{od.owner_name || 'Unknown'}</p>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0"
-                              onClick={() => handleDeleteDistribution(od.id)}
-                              disabled={deletingId === od.id}
-                              aria-label="Delete distribution"
-                            >
-                              {deletingId === od.id ? (
-                                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                              ) : (
-                                <Trash2 className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </div>
-                          <div className="ml-11 mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                            <span>{od.payment_method}</span>
-                            <span>·</span>
-                            <span>{formatCurrencyARS(od.amount)}</span>
-                            <span>·</span>
-                            <span>{format(new Date(od.distribution_date), 'MMM dd, yyyy')}</span>
-                          </div>
-                        </div>
-                      ))}
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-4 w-4" /> Owner Distribution
+          </CardTitle>
+          <CardDescription>Distributions of funds to owners for {filterLabel}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {(() => {
+            const totalDistributed = metrics.filteredOwnerDistributions.reduce((sum, od) => sum + od.amount, 0);
+            const remaining = metrics.totalBalance - totalDistributed;
+            const fairShare = owners.length > 0 ? metrics.totalBalance / owners.length : 0;
+            const distributedByOwner = metrics.filteredOwnerDistributions.reduce(
+              (acc, od) => {
+                acc[od.owner_id] = (acc[od.owner_id] || 0) + od.amount;
+                return acc;
+              },
+              {} as Record<string, number>
+            );
+
+            return (
+              <div className="space-y-5">
+                {/* Section 1: Summary Bar */}
+                <div className="grid grid-cols-3 gap-4 rounded-lg border bg-muted/40 p-4">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Available Balance</p>
+                    <p className="text-lg font-semibold mt-0.5">{formatCurrencyARS(metrics.totalBalance)}</p>
                   </div>
-                  {(() => {
-                    const byOwner = metrics.filteredOwnerDistributions.reduce(
-                      (acc, od) => {
-                        const key = od.owner_id;
-                        if (!acc[key]) acc[key] = { name: od.owner_name, total: 0 };
-                        acc[key].total += od.amount;
-                        return acc;
-                      },
-                      {} as Record<string, { name: string; total: number }>
-                    );
-                    const ownerEntries = Object.entries(byOwner);
-                    const showByOwner = ownerEntries.length > 1;
-                    return showByOwner ? (
-                      <>
-                        <Separator />
-                        <div className="space-y-1.5 pt-1">
-                          <p className="text-xs font-medium text-muted-foreground">Total distributed by owner</p>
-                          {ownerEntries.map(([ownerId, { name, total }]) => (
-                            <div key={ownerId} className="flex items-center justify-between text-sm">
-                              <span className="text-muted-foreground">{name || 'Unknown'}</span>
-                              <span>{formatCurrencyARS(total)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    ) : null;
-                  })()}
-                  <Separator />
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-sm text-muted-foreground">Total distributed in period</span>
-                    <span className="text-sm">
-                      {formatCurrencyARS(
-                        metrics.filteredOwnerDistributions.reduce((sum, od) => sum + od.amount, 0)
-                      )}
-                    </span>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Total Distributed</p>
+                    <p className="text-lg font-semibold mt-0.5">{formatCurrencyARS(totalDistributed)}</p>
                   </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-sm">
-                  <p>No distributions in this period</p>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground">Remaining</p>
+                    <p className={`text-lg font-semibold mt-0.5 ${remaining > 0 ? 'text-emerald-600' : remaining < 0 ? 'text-red-600' : ''}`}>
+                      {formatCurrencyARS(remaining)}
+                    </p>
+                  </div>
                 </div>
-              )}
-              {owners.length > 0 && (() => {
-                const equalShare = metrics.totalBalance / owners.length;
-                const distributedByOwner = metrics.filteredOwnerDistributions.reduce(
-                  (acc, od) => {
-                    acc[od.owner_id] = (acc[od.owner_id] || 0) + od.amount;
-                    return acc;
-                  },
-                  {} as Record<string, number>
-                );
-                return (
+
+                {/* Section 2: Distribution Table */}
+                {metrics.filteredOwnerDistributions.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Owner</TableHead>
+                        <TableHead>Payment Method</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                        <TableHead className="w-10" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {[...metrics.filteredOwnerDistributions]
+                        .sort((a, b) => new Date(b.distribution_date).getTime() - new Date(a.distribution_date).getTime())
+                        .map((od) => (
+                          <TableRow key={od.id}>
+                            <TableCell className="text-muted-foreground text-sm">
+                              {format(new Date(od.distribution_date), 'MMM dd, yyyy')}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center justify-center w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 text-xs font-medium shrink-0">
+                                  {(od.owner_name || '?').charAt(0)}
+                                </div>
+                                <span className="text-sm font-medium">{od.owner_name || 'Unknown'}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <span className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                                {od.payment_method}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-right font-medium">{formatCurrencyARS(od.amount)}</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                onClick={() => handleDeleteDistribution(od.id)}
+                                disabled={deletingId === od.id}
+                                aria-label="Delete distribution"
+                              >
+                                {deletingId === od.id ? (
+                                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-sm">
+                    <p>No distributions in this period</p>
+                  </div>
+                )}
+
+                {/* Section 3: Owner Summary Footer */}
+                {owners.length > 0 && (
                   <>
                     <Separator />
-                    <div className="space-y-1.5 pt-1">
-                      <p className="text-xs font-medium text-muted-foreground">Surplus / deficit by owner</p>
-                      {owners.map((owner) => {
-                        const totalDistributed = distributedByOwner[owner.id] ?? 0;
-                        const surplusDeficit = totalDistributed - equalShare;
-                        return (
-                          <div key={owner.id} className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground">{owner.full_name || 'Unknown'}</span>
-                            <span className={surplusDeficit > 0 ? 'text-emerald-600' : surplusDeficit < 0 ? 'text-red-600' : ''}>
-                              {surplusDeficit > 0 ? '+' : ''}{formatCurrencyARS(surplusDeficit)}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Owner</TableHead>
+                          <TableHead className="text-right">Distributed</TableHead>
+                          <TableHead className="text-right">Fair Share</TableHead>
+                          <TableHead className="text-right">Difference</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {owners.map((owner) => {
+                          const ownerTotal = distributedByOwner[owner.id] ?? 0;
+                          const diff = ownerTotal - fairShare;
+                          return (
+                            <TableRow key={owner.id}>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <div className="flex items-center justify-center w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 text-xs font-medium shrink-0">
+                                    {(owner.full_name || '?').charAt(0)}
+                                  </div>
+                                  <span className="text-sm font-medium">{owner.full_name || 'Unknown'}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right font-medium">{formatCurrencyARS(ownerTotal)}</TableCell>
+                              <TableCell className="text-right text-muted-foreground">{formatCurrencyARS(fairShare)}</TableCell>
+                              <TableCell className={`text-right font-medium ${diff > 0 ? 'text-emerald-600' : diff < 0 ? 'text-red-600' : ''}`}>
+                                {diff > 0 ? '+' : ''}{formatCurrencyARS(diff)}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
                   </>
-                );
-              })()}
-            </div>
-          </CardContent>
-        </Card>
+                )}
+              </div>
+            );
+          })()}
+        </CardContent>
+      </Card>
     </div>
   );
 }
