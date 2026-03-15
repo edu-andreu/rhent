@@ -128,11 +128,88 @@ app.use("/make-server-918f1e54/*", async (c, next) => {
   }
 
   // Look up app_users row for role + active status
-  const { data: appUser, error: appUserError } = await supabase
-    .from("app_users")
-    .select("*")
-    .eq("id", user.id)
-    .single();
+  let appUser: { id: string; role: string; is_active: boolean; [k: string]: unknown } | null = null;
+  let appUserError: Error | null = null;
+  {
+    const result = await supabase
+      .from("app_users")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+    appUser = result.data;
+    appUserError = result.error;
+  }
+
+  // If no profile (trigger may not have run), ensure one exists: first user = admin, rest = employee.
+  if (appUserError || !appUser) {
+    // #region agent log
+    fetch("http://127.0.0.1:7242/ingest/22a6c706-0d2b-4d6d-aec0-7902740f0c44", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ddebce" },
+      body: JSON.stringify({
+        sessionId: "ddebce",
+        location: "server/index.tsx:auth-middleware",
+        message: "app_users row missing, ensuring profile",
+        data: { userId: user.id, appUserError: appUserError?.message },
+        timestamp: Date.now(),
+        hypothesisId: "A",
+      }),
+    }).catch(() => {});
+    // #endregion
+    const { count } = await supabase.from("app_users").select("*", { count: "exact", head: true });
+    const role = (count ?? 0) === 0 ? "admin" : "employee";
+    const meta = user.user_metadata ?? {};
+    const { error: insertErr } = await supabase.from("app_users").upsert(
+      {
+        id: user.id,
+        email: user.email ?? "",
+        full_name: meta.full_name ?? meta.name ?? null,
+        avatar_url: meta.avatar_url ?? meta.picture ?? null,
+        role,
+      },
+      { onConflict: "id", ignoreDuplicates: true }
+    );
+    if (insertErr) {
+      console.error("Failed to ensure app_users row:", insertErr, {
+        code: (insertErr as { code?: string })?.code,
+        message: (insertErr as { message?: string })?.message,
+        details: (insertErr as { details?: string })?.details,
+      });
+      // Fallback: trigger may have just created the row; wait and refetch once.
+      await new Promise((r) => setTimeout(r, 150));
+      const fallback = await supabase.from("app_users").select("*").eq("id", user.id).single();
+      if (!fallback.error && fallback.data) {
+        appUser = fallback.data;
+        appUserError = null;
+        console.log("[auth] Using app_users row created by trigger:", user.id, "role:", fallback.data?.role);
+      } else {
+        return c.json({ error: "User profile not found" }, 403);
+      }
+    } else {
+      const refetch = await supabase.from("app_users").select("*").eq("id", user.id).single();
+      appUser = refetch.data;
+      appUserError = refetch.error;
+      if (!refetch.error && refetch.data) {
+        console.log("[auth] Ensured app_users profile for new user:", user.id, "role:", refetch.data?.role);
+      }
+    }
+    // #region agent log
+    if (appUser) {
+      fetch("http://127.0.0.1:7242/ingest/22a6c706-0d2b-4d6d-aec0-7902740f0c44", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "ddebce" },
+        body: JSON.stringify({
+          sessionId: "ddebce",
+          location: "server/index.tsx:auth-middleware",
+          message: "app_users profile ensured",
+          data: { userId: user.id, role: appUser.role },
+          timestamp: Date.now(),
+          hypothesisId: "A",
+        }),
+      }).catch(() => {});
+    }
+    // #endregion
+  }
 
   if (appUserError || !appUser) {
     return c.json({ error: "User profile not found" }, 403);
