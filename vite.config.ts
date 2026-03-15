@@ -4,6 +4,7 @@
   import path from 'path';
 
   export default defineConfig({
+    base: '/rhent/',
     test: {
       globals: true,
       environment: 'jsdom',
@@ -79,7 +80,6 @@
     },
     build: {
       target: 'esnext',
-      outDir: 'build',
     },
     server: {
       port: 3000,
