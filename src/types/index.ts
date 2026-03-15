@@ -126,11 +126,13 @@ export interface CashTransaction {
   amount: number;
   description: string;
   category: string;
-  /** Name from drawer_transaction_categories for display in Description column. */
+  /** Name from drawer_transaction_categories (supplier) for display in Supplier column. */
   categoryName?: string;
   date: Date;
   /** Payment method label (e.g. "Efectivo", "Ualá") for display in Expenses/Money tabs. */
   paymentMethod?: string;
+  /** When present, indicates origin: 'drawer' = drawer_transactions, 'expense' = expenses table. Used for delete. */
+  source?: 'drawer' | 'expense';
 }
 
 export interface Customer {

@@ -739,7 +739,7 @@ app.get("/make-server-918f1e54/drawer/categories", async (c) => {
 
     let query = supabase
       .from("drawer_transaction_categories")
-      .select("id, name, direction")
+      .select("id, name, direction, category")
       .eq("is_active", true)
       .order("name");
 
@@ -765,7 +765,7 @@ app.get("/make-server-918f1e54/drawer/categories", async (c) => {
 app.post("/make-server-918f1e54/drawer/categories", async (c) => {
   try {
     const body = await c.req.json();
-    const { name, direction } = body;
+    const { name, direction, category: categoryBody } = body;
 
     if (!name || name.trim() === "") {
       return c.json({ error: "Category name is required" }, 400);
@@ -775,10 +775,15 @@ app.post("/make-server-918f1e54/drawer/categories", async (c) => {
       return c.json({ error: "Direction must be 'in' or 'out'" }, 400);
     }
 
+    const categoryValue =
+      categoryBody && String(categoryBody).trim() !== ""
+        ? String(categoryBody).trim()
+        : name.trim();
+
     const { data: category, error } = await supabase
       .from("drawer_transaction_categories")
-      .insert({ name: name.trim(), direction })
-      .select("id, name, direction")
+      .insert({ name: name.trim(), direction, category: categoryValue })
+      .select("id, name, direction, category")
       .single();
 
     if (error) {
@@ -795,6 +800,111 @@ app.post("/make-server-918f1e54/drawer/categories", async (c) => {
   } catch (error: any) {
     console.log("Error creating transaction category:", error);
     return c.json({ error: `Failed to create category: ${error.message}` }, 500);
+  }
+});
+
+// PUT /drawer/categories/:id - Update a transaction category (supplier)
+app.put("/make-server-918f1e54/drawer/categories/:id", async (c) => {
+  try {
+    const id = c.req.param("id");
+    if (!id) {
+      return c.json({ error: "Category id is required" }, 400);
+    }
+    const body = await c.req.json();
+    const { name, category: categoryBody, direction } = body;
+
+    const updates: Record<string, unknown> = {};
+    if (name !== undefined) {
+      if (typeof name !== "string" || name.trim() === "") {
+        return c.json({ error: "Name must be a non-empty string" }, 400);
+      }
+      updates.name = name.trim();
+    }
+    if (categoryBody !== undefined) {
+      updates.category =
+        typeof categoryBody === "string" && categoryBody.trim() !== ""
+          ? categoryBody.trim()
+          : "";
+    }
+    if (direction !== undefined) {
+      if (direction !== "in" && direction !== "out") {
+        return c.json({ error: "Direction must be 'in' or 'out'" }, 400);
+      }
+      updates.direction = direction;
+    }
+    if (Object.keys(updates).length === 0) {
+      return c.json({ error: "At least one of name, category, or direction is required" }, 400);
+    }
+
+    const { data: category, error } = await supabase
+      .from("drawer_transaction_categories")
+      .update(updates)
+      .eq("id", id)
+      .select("id, name, direction, category")
+      .single();
+
+    if (error) {
+      if (error.code === "23505") {
+        return c.json(
+          { error: `A supplier with this name already exists for ${updates.direction || "this direction"}` },
+          409,
+        );
+      }
+      console.log("Error updating transaction category:", error);
+      return c.json({ error: `Failed to update category: ${error.message}` }, 500);
+    }
+    if (!category) {
+      return c.json({ error: "Category not found" }, 404);
+    }
+    return c.json({ category }, 200);
+  } catch (error: any) {
+    console.log("Error in drawer/categories PUT:", error);
+    return c.json({ error: `Failed to update category: ${error.message}` }, 500);
+  }
+});
+
+// DELETE /drawer/categories/:id - Delete a transaction category (supplier) if not in use
+app.delete("/make-server-918f1e54/drawer/categories/:id", async (c) => {
+  try {
+    const id = c.req.param("id");
+    if (!id) {
+      return c.json({ error: "Category id is required" }, 400);
+    }
+
+    const { data: drawerRefs } = await supabase
+      .from("drawer_transactions")
+      .select("drawer_txn_id")
+      .eq("category_id", id)
+      .limit(1);
+    const { data: expenseRefs } = await supabase
+      .from("expenses")
+      .select("id")
+      .eq("category_id", id)
+      .limit(1);
+
+    if ((drawerRefs && drawerRefs.length > 0) || (expenseRefs && expenseRefs.length > 0)) {
+      return c.json(
+        {
+          error:
+            "Cannot delete: this supplier is used by transactions or expenses. Remove or reassign those first.",
+        },
+        409,
+      );
+    }
+
+    const { error: deleteError } = await supabase
+      .from("drawer_transaction_categories")
+      .delete()
+      .eq("id", id);
+
+    if (deleteError) {
+      console.log("Error deleting transaction category:", deleteError);
+      return c.json({ error: `Failed to delete category: ${deleteError.message}` }, 500);
+    }
+    return c.json({ deleted: true }, 200);
+  } catch (error: any) {
+    console.log("Error in drawer/categories DELETE:", error);
+    return c.json({ error: `Failed to delete category: ${error.message}` }, 500);
   }
 });
 

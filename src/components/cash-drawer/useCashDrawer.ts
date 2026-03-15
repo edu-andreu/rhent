@@ -52,6 +52,7 @@ export interface TransactionCategory {
   id: string;
   name: string;
   direction: 'in' | 'out';
+  category?: string;
 }
 
 export interface DrawerHistoryItem {
@@ -207,9 +208,9 @@ export function useCashDrawer() {
     }
   };
 
-  const createCategory = async (name: string, direction: 'in' | 'out'): Promise<TransactionCategory | null> => {
+  const createCategory = async (name: string, category: string, direction: 'in' | 'out'): Promise<TransactionCategory | null> => {
     try {
-      const data = await postFunction<Record<string, any>>("drawer/categories", { name, direction });
+      const data = await postFunction<Record<string, any>>("drawer/categories", { name, category, direction });
       if (data.category) {
         await fetchCategories(direction);
         return data.category;

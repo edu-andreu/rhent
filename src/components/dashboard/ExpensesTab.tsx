@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { TrendingDown, Receipt, Plus, DollarSign } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { TrendingDown, Receipt, Plus, DollarSign, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -12,13 +12,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { format } from 'date-fns';
 import { formatCurrencyARS } from '../../shared/format/currency';
-import { getFunction, postFunction } from '../../shared/api/client';
+import { getFunction, postFunction, deleteFunction } from '../../shared/api/client';
 import { handleApiError } from '../../shared/utils/errorHandler';
 import { toast } from 'sonner@2.0.3';
 import type { DashboardMetrics } from './useDashboardMetrics';
 import type { DashboardPaymentMethod } from '../../features/dashboard/useDashboardData';
 import { CategoryCombobox } from '../cash-drawer/CategoryCombobox';
 import type { TransactionCategory } from '../cash-drawer/useCashDrawer';
+import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../ui/alert-dialog';
+import type { CashTransaction } from '../../types';
 
 const TOOLTIP_STYLE = { background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' };
 
@@ -39,6 +41,9 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
   const [submitting, setSubmitting] = useState(false);
   const [categories, setCategories] = useState<TransactionCategory[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const prevDialogOpenRef = useRef(false);
+  const [deletingTransaction, setDeletingTransaction] = useState<CashTransaction | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchCategories = useCallback(async () => {
     setCategoriesLoading(true);
@@ -54,10 +59,12 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
   }, []);
 
   useEffect(() => {
-    if (showAddExpenseDialog && categories.length === 0 && !categoriesLoading) {
+    const dialogJustOpened = showAddExpenseDialog && !prevDialogOpenRef.current;
+    prevDialogOpenRef.current = showAddExpenseDialog;
+    if (dialogJustOpened && !categoriesLoading) {
       fetchCategories();
     }
-  }, [showAddExpenseDialog, categories.length, categoriesLoading, fetchCategories]);
+  }, [showAddExpenseDialog, categoriesLoading, fetchCategories]);
 
   const resetDialog = useCallback(() => {
     setExpenseDate(format(new Date(), 'yyyy-MM-dd'));
@@ -67,9 +74,9 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
     setDescription('');
   }, []);
 
-  const createCategory = useCallback(async (name: string): Promise<TransactionCategory | null> => {
+  const createCategory = useCallback(async (supplierName: string, category: string): Promise<TransactionCategory | null> => {
     try {
-      const data = await postFunction<{ category?: TransactionCategory }>('drawer/categories', { name, direction: 'out' });
+      const data = await postFunction<{ category?: TransactionCategory }>('drawer/categories', { name: supplierName, category, direction: 'out' });
       if (data.category) {
         await fetchCategories();
         return data.category;
@@ -80,6 +87,24 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
       return null;
     }
   }, [fetchCategories]);
+
+  const handleDeleteTransaction = async () => {
+    if (!deletingTransaction) return;
+    const { id, source } = deletingTransaction;
+    const path = source === 'expense' ? `dashboard/expense/${id}` : `drawer/transaction/${id}`;
+    setDeleting(true);
+    try {
+      await deleteFunction(path);
+      toast.success('Transaction deleted');
+      setDeletingTransaction(null);
+      await onExpenseAdded?.();
+    } catch (err) {
+      handleApiError(err, 'delete transaction', 'Failed to delete transaction');
+      toast.error(err instanceof Error ? err.message : 'Failed to delete transaction');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const handleSubmitExpense = async () => {
     if (!categoryId) {
@@ -186,7 +211,7 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
               />
             </div>
             <div className="space-y-2">
-              <Label>Category *</Label>
+              <Label>Supplier *</Label>
               <CategoryCombobox
                 categories={categories}
                 selectedId={categoryId}
@@ -289,11 +314,12 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Description</TableHead>
+                      <TableHead>Supplier</TableHead>
                       <TableHead>Category</TableHead>
                       <TableHead>Payment method</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="w-10" />
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -316,6 +342,19 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
                           <TableCell className="text-right text-red-600">
                             -{formatCurrencyARS(t.amount)}
                           </TableCell>
+                          <TableCell className="w-10">
+                            {t.source != null && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                onClick={() => setDeletingTransaction(t)}
+                                aria-label="Delete transaction"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))}
                   </TableBody>
@@ -329,6 +368,33 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
           </CardContent>
         </Card>
       </div>
+
+      <AlertDialog open={deletingTransaction != null} onOpenChange={(open) => !open && setDeletingTransaction(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete transaction</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deletingTransaction && (
+                <>
+                  Are you sure you want to delete this expense?{' '}
+                  <span className="font-medium">{deletingTransaction.categoryName ?? deletingTransaction.category}</span>{' '}
+                  for {formatCurrencyARS(deletingTransaction.amount)}. This action cannot be undone.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteTransaction}
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

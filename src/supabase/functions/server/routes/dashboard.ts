@@ -165,6 +165,7 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
         categoryName?: string;
         date: string;
         paymentMethod?: string;
+        source: "drawer" | "expense";
       }> = [];
 
       const vaultTransfers: Array<{
@@ -221,6 +222,7 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
           categoryName,
           date,
           paymentMethod: "Efectivo",
+          source: "drawer",
         });
       }
 
@@ -261,6 +263,7 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
             categoryName,
             date: (row as any).expense_date,
             paymentMethod,
+            source: "expense",
           });
         }
       }
@@ -344,6 +347,28 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
     } catch (error: any) {
       console.log("Error in dashboard/expense:", error);
       return c.json({ error: `Failed to create expense: ${error.message}` }, 500);
+    }
+  });
+
+  // DELETE /dashboard/expense/:id - Delete an expense (from expenses table)
+  app.delete("/make-server-918f1e54/dashboard/expense/:id", async (c) => {
+    try {
+      const id = c.req.param("id");
+      if (!id) {
+        return c.json({ error: "Expense id is required" }, 400);
+      }
+      const { error: deleteError } = await supabase
+        .from("expenses")
+        .delete()
+        .eq("id", id);
+      if (deleteError) {
+        console.log("Error deleting expense:", deleteError);
+        return c.json({ error: `Failed to delete expense: ${deleteError.message}` }, 500);
+      }
+      return c.json({ deleted: true }, 200);
+    } catch (error: any) {
+      console.log("Error in dashboard/expense DELETE:", error);
+      return c.json({ error: `Failed to delete expense: ${error.message}` }, 500);
     }
   });
 

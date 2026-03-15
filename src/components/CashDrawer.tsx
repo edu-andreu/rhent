@@ -74,14 +74,14 @@ export function CashDrawer() {
                   drawer.setCountedCash(expectedBalance);
                   drawer.setShowCloseDialog(true);
                 }}
-                onCashIn={() => {
+                onCashIn={async () => {
                   drawer.setTransactionType('in');
-                  drawer.fetchCategories('in');
+                  await drawer.fetchCategories('in');
                   drawer.setShowCashTransactionDialog(true);
                 }}
-                onCashOut={() => {
+                onCashOut={async () => {
                   drawer.setTransactionType('out');
-                  drawer.fetchCategories('out');
+                  await drawer.fetchCategories('out');
                   drawer.setShowCashTransactionDialog(true);
                 }}
                 onEditOpeningCash={(currentAmount) => {

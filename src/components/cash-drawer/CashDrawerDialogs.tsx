@@ -58,7 +58,7 @@ interface CashDrawerDialogsProps {
   shiftEnd: string;
   setShiftEnd: (time: string) => void;
   hourlyRate: number;
-  createCategory: (name: string, direction: 'in' | 'out') => Promise<TransactionCategory | null>;
+  createCategory: (name: string, category: string, direction: 'in' | 'out') => Promise<TransactionCategory | null>;
   resetTransactionDialog: () => void;
 
   // Edit opening cash dialog
@@ -460,14 +460,14 @@ export function CashDrawerDialogs({
               </>
             ) : (
               <>
-                {/* Category combobox (Expense / Cash-in) */}
+                {/* Supplier combobox (Expense / Cash-in) */}
                 <div className="space-y-2">
-                  <Label>Category *</Label>
+                  <Label>Supplier *</Label>
                   <CategoryCombobox
                     categories={categories}
                     selectedId={selectedCategoryId}
                     onSelect={setSelectedCategoryId}
-                    onAddNew={(name) => createCategory(name, transactionType === 'in' ? 'in' : 'out')}
+                    onAddNew={(supplierName, category) => createCategory(supplierName, category, transactionType === 'in' ? 'in' : 'out')}
                     direction={transactionType === 'in' ? 'in' : 'out'}
                   />
                 </div>

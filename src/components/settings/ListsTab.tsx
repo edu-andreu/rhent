@@ -17,6 +17,7 @@ import {
 } from "../../shared/api/client";
 import { ApiListResponse, ApiListItemResponse } from "../../types/api";
 import { CRUDList } from "./CRUDList";
+import { SuppliersList } from "./SuppliersList";
 
 interface ListItem {
   id: string;
@@ -81,11 +82,18 @@ const LIST_CONFIG = {
 } as const;
 
 type ListKey = keyof typeof LIST_CONFIG;
+type TabKey = ListKey | "suppliers";
 
 const TAB_KEYS: ListKey[] = ["categories", "types", "colors", "brands", "names", "paymentMethods"];
+const ALL_TAB_KEYS: TabKey[] = [...TAB_KEYS, "suppliers"];
+
+function getTabLabel(key: TabKey): string {
+  if (key === "suppliers") return "Suppliers";
+  return LIST_CONFIG[key].label;
+}
 
 export function ListsTab() {
-  const [activeTab, setActiveTab] = useState<ListKey>("categories");
+  const [activeTab, setActiveTab] = useState<TabKey>("categories");
   const [lists, setLists] = useState<Record<ListKey, ListItem[]>>({
     categories: [],
     types: [],
@@ -205,6 +213,11 @@ export function ListsTab() {
     };
   };
 
+  const renderTabContent = (key: TabKey) => {
+    if (key === "suppliers") return <SuppliersList />;
+    return renderCRUDList(key);
+  };
+
   const renderCRUDList = (listKey: ListKey) => {
     const config = LIST_CONFIG[listKey];
     const handlers = wrapWithErrorHandling(listKey);
@@ -230,35 +243,35 @@ export function ListsTab() {
     <div className="space-y-6">
       {/* Mobile: Select Dropdown */}
       <div className="block lg:hidden">
-        <Select value={activeTab} onValueChange={(value) => setActiveTab(value as ListKey)}>
+        <Select value={activeTab} onValueChange={(value) => setActiveTab(value as TabKey)}>
           <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {TAB_KEYS.map((key) => (
+            {ALL_TAB_KEYS.map((key) => (
               <SelectItem key={key} value={key}>
-                {LIST_CONFIG[key].label}
+                {getTabLabel(key)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <div className="mt-6">{renderCRUDList(activeTab)}</div>
+        <div className="mt-6">{renderTabContent(activeTab)}</div>
       </div>
 
       {/* Desktop: Tabs */}
       <div className="hidden lg:block">
-        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ListKey)} className="w-full">
-          <TabsList className="grid w-full grid-cols-6">
-            {TAB_KEYS.map((key) => (
-              <TabsTrigger key={key} value={key}>
-                {LIST_CONFIG[key].label}
+        <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabKey)} className="w-full">
+          <TabsList className="w-full justify-start overflow-x-auto">
+            {ALL_TAB_KEYS.map((key) => (
+              <TabsTrigger key={key} value={key} className="whitespace-nowrap">
+                {getTabLabel(key)}
               </TabsTrigger>
             ))}
           </TabsList>
           <div className="mt-6">
-            {TAB_KEYS.map((key) => (
+            {ALL_TAB_KEYS.map((key) => (
               <TabsContent key={key} value={key} className="mt-0">
-                {renderCRUDList(key)}
+                {renderTabContent(key)}
               </TabsContent>
             ))}
           </div>
