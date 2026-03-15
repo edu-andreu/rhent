@@ -349,22 +349,26 @@ export function MoneyTab({ metrics, filterLabel, owners, paymentMethods, onDistr
             );
 
             return (
-              <div className="space-y-5">
+              <div className="space-y-6">
                 {/* Section 1: Summary Bar */}
                 <div className="grid grid-cols-3 gap-4 rounded-lg border bg-muted/40 p-4">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground">Available Balance</p>
                     <p className="text-lg font-semibold mt-0.5">{formatCurrencyARS(metrics.totalBalance)}</p>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground">Total Distributed</p>
-                    <p className="text-lg font-semibold mt-0.5">{formatCurrencyARS(totalDistributed)}</p>
+                  <div className="flex justify-center">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Total Distributed</p>
+                      <p className="text-lg font-semibold mt-0.5">{formatCurrencyARS(totalDistributed)}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground">Remaining</p>
-                    <p className={`text-lg font-semibold mt-0.5 ${remaining > 0 ? 'text-emerald-600' : remaining < 0 ? 'text-red-600' : ''}`}>
-                      {formatCurrencyARS(remaining)}
-                    </p>
+                  <div className="flex justify-end">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">Remaining</p>
+                      <p className={`text-lg font-semibold mt-0.5 ${remaining > 0 ? 'text-emerald-600' : remaining < 0 ? 'text-red-600' : ''}`}>
+                        {formatCurrencyARS(remaining)}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -430,8 +434,7 @@ export function MoneyTab({ metrics, filterLabel, owners, paymentMethods, onDistr
 
                 {/* Section 3: Owner Summary Footer */}
                 {owners.length > 0 && (
-                  <>
-                    <Separator />
+                  <div className="rounded-lg border bg-muted/40 p-4">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -465,7 +468,7 @@ export function MoneyTab({ metrics, filterLabel, owners, paymentMethods, onDistr
                         })}
                       </TableBody>
                     </Table>
-                  </>
+                  </div>
                 )}
               </div>
             );
