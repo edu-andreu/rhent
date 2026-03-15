@@ -124,8 +124,8 @@ export function AppHeader({
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-9 w-9 shrink-0 rounded-full" data-testid="user-menu-button">
-                  <Avatar className="h-9 w-9">
+                <Button variant="ghost" size="icon" className="relative size-9 shrink-0 aspect-square rounded-full p-0" data-testid="user-menu-button">
+                  <Avatar className="size-9 aspect-square">
                     <AvatarImage src={appUser?.avatar_url ?? undefined} alt={appUser?.full_name ?? "User"} referrerPolicy="no-referrer" />
                     <AvatarFallback>{initials}</AvatarFallback>
                   </Avatar>
