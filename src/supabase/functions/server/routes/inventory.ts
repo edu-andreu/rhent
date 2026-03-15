@@ -458,6 +458,18 @@ export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
         if (colorError) console.log("Error updating item colors:", colorError);
       }
 
+      // When client sends empty imageUrl, remove item's image from storage so response uses category default
+      const requestedImageUrl = body.imageUrl;
+      if (requestedImageUrl === "" || requestedImageUrl === null) {
+        const bucketName = 'photos';
+        const { data: existingFiles } = await supabase.storage.from(bucketName).list('', { search: itemId });
+        if (existingFiles && existingFiles.length > 0) {
+          const filesToDelete = existingFiles.map((file: { name: string }) => file.name);
+          const { error: storageError } = await supabase.storage.from(bucketName).remove(filesToDelete);
+          if (storageError) console.log("Error removing item image from storage on update:", storageError);
+        }
+      }
+
       const { data: fullItem, error: fetchError } = await supabase
         .from("inventory_items")
         .select(`

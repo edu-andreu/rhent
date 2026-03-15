@@ -439,11 +439,18 @@ export function useAddDressForm({ open, editDress, onAdd, onClose }: UseAddDress
 
   const removeImage = () => {
     if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
-    setImagePreview("");
-    setFormData((prev) => ({ ...prev, imageUrl: "" }));
     pendingImageFile.current = null;
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+    const selectedCategory = categories.find((c) => c.id === formData.categoryId);
+    if (selectedCategory?.default_image) {
+      const defaultImageUrl = buildStorageUrl("photos", selectedCategory.default_image);
+      setImagePreview(defaultImageUrl);
+      setFormData((prev) => ({ ...prev, imageUrl: "" }));
+    } else {
+      setImagePreview("");
+      setFormData((prev) => ({ ...prev, imageUrl: "" }));
     }
   };
 
