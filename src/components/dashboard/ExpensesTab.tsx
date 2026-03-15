@@ -31,6 +31,7 @@ interface ExpensesTabProps {
 
 export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdded }: ExpensesTabProps) {
   const [showAddExpenseDialog, setShowAddExpenseDialog] = useState(false);
+  const [expenseDate, setExpenseDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
   const [amount, setAmount] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [paymentMethodId, setPaymentMethodId] = useState('');
@@ -59,6 +60,7 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
   }, [showAddExpenseDialog, categories.length, categoriesLoading, fetchCategories]);
 
   const resetDialog = useCallback(() => {
+    setExpenseDate(format(new Date(), 'yyyy-MM-dd'));
     setAmount('');
     setCategoryId('');
     setPaymentMethodId('');
@@ -100,6 +102,7 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
         category_id: categoryId,
         payment_method_id: paymentMethodId,
         description: description.trim() || undefined,
+        expense_date: new Date(expenseDate + 'T12:00:00.000Z').toISOString(),
       });
       toast.success('Expense added');
       setShowAddExpenseDialog(false);
@@ -173,6 +176,15 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
             <DialogDescription>Record a manual expense. It will appear in the expenses list.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="expense-date">Date *</Label>
+              <Input
+                id="expense-date"
+                type="date"
+                value={expenseDate}
+                onChange={(e) => setExpenseDate(e.target.value)}
+              />
+            </div>
             <div className="space-y-2">
               <Label>Category *</Label>
               <CategoryCombobox

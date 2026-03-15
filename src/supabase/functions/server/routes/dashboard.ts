@@ -276,7 +276,7 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
   app.post("/make-server-918f1e54/dashboard/expense", async (c) => {
     try {
       const body = await c.req.json();
-      const { amount, category_id, payment_method_id, description } = body;
+      const { amount, category_id, payment_method_id, description, expense_date } = body;
 
       if (amount === undefined || amount === null) {
         return c.json({ error: "Amount is required" }, 400);
@@ -318,11 +318,16 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
           ? description.trim()
           : null;
 
+      const expenseDateVal =
+        expense_date != null && typeof expense_date === "string" && expense_date.trim() !== ""
+          ? new Date(expense_date).toISOString()
+          : new Date().toISOString();
+
       const { data: expense, error: insertError } = await supabase
         .from("expenses")
         .insert({
           amount: amountNum,
-          expense_date: new Date().toISOString(),
+          expense_date: expenseDateVal,
           category_id,
           payment_method_id,
           description: descriptionVal,
