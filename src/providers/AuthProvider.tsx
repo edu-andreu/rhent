@@ -91,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut({ scope: "global" });
     setSession(null);
     setAppUser(null);
-    window.location.href = "/";
+    window.location.href = window.location.origin + import.meta.env.BASE_URL;
   };
 
   return (
