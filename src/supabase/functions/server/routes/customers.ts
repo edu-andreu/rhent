@@ -8,7 +8,7 @@ export function registerCustomersRoutes(app: Hono, supabase: SupabaseClient) {
     try {
       const { data: customers, error } = await supabase
         .from("customers")
-        .select("customer_id, first_name, last_name, email, phone, address, id_number, notes, created_at, store_credit")
+        .select("*")
         .order("created_at", { ascending: false });
 
       if (error) {
