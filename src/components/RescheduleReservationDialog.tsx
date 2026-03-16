@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -95,7 +95,7 @@ export function RescheduleReservationDialog({ reservation, open, onClose, onConf
     setEndMonth(date);
   }, [booking]);
 
-  const pricing = calculatePricing(
+  const pricing = useMemo(() => calculatePricing(
     booking.startDate,
     booking.endDate,
     booking.autoCalculatedEndDate,
@@ -103,7 +103,7 @@ export function RescheduleReservationDialog({ reservation, open, onClose, onConf
     reservation?.dressPricePerDay || 0,
     extraDaysPrice,
     holidays
-  );
+  ), [booking.startDate, booking.endDate, booking.autoCalculatedEndDate, rentalDays, reservation?.dressPricePerDay, extraDaysPrice, holidays]);
 
   const handleConfirm = async () => {
     if (!booking.startDate || !booking.endDate || !reservation) return;

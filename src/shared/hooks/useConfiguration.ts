@@ -33,8 +33,8 @@ const DEFAULT_CONFIG: RentalConfiguration = {
  * @returns Object with configuration, loading state, and error state
  */
 export function useConfiguration(enabled: boolean = true) {
-  const [config, setConfig] = useState<RentalConfiguration>(DEFAULT_CONFIG);
-  const [loading, setLoading] = useState(true);
+  const [config, setConfig] = useState<RentalConfiguration>(configCache || DEFAULT_CONFIG);
+  const [loading, setLoading] = useState(!configCache);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -95,7 +95,7 @@ export function useConfiguration(enabled: boolean = true) {
 
     const loadConfig = async () => {
       try {
-        setLoading(true);
+        if (!configCache) setLoading(true);
         setError(false);
         const fetchedConfig = await fetchConfig();
         setConfig(fetchedConfig);

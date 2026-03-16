@@ -15,8 +15,8 @@ let holidaysFetchPromise: Promise<Holiday[]> | null = null;
  * @returns Object with holidays array, loading state, and error state
  */
 export function useHolidays(enabled: boolean = true) {
-  const [holidays, setHolidays] = useState<Holiday[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [holidays, setHolidays] = useState<Holiday[]>(holidaysCache || []);
+  const [loading, setLoading] = useState(!holidaysCache);
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -60,7 +60,7 @@ export function useHolidays(enabled: boolean = true) {
 
     const loadHolidays = async () => {
       try {
-        setLoading(true);
+        if (!holidaysCache) setLoading(true);
         setError(false);
         const fetchedHolidays = await fetchHolidays();
         setHolidays(fetchedHolidays);

@@ -2,15 +2,18 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js";
 
 const BUCKET_NAME = "photos";
 const SIGNED_URL_EXPIRY = 31536000; // 1 year in seconds
+const FILE_LIST_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+interface FileEntry { name: string }
+let fileListCache: { files: FileEntry[]; expiry: number } | null = null;
+
+export function clearImageCache() {
+  fileListCache = null;
+}
 
 /**
- * Resolves image URLs for a batch of item IDs in 2 calls total
- * instead of 2 calls per item (list + signedUrl).
- *
- * Strategy:
- *   1. List all files in the photos bucket (single call).
- *   2. Match files to item IDs by checking if the filename starts with the ID.
- *   3. Batch-create signed URLs for all matched files (single call).
+ * Resolves image URLs for a batch of item IDs in at most 2 calls total
+ * (one list + one batch signedUrls), with a 5-minute in-memory cache on the file list.
  */
 export async function batchResolveImageUrls(
   supabase: SupabaseClient,
@@ -22,15 +25,22 @@ export async function batchResolveImageUrls(
 
   if (itemIds.length === 0) return result;
 
-  // 1. List all files in bucket (Supabase returns up to 1000 by default)
-  const { data: allFiles, error: listError } = await supabase.storage
-    .from(BUCKET_NAME)
-    .list("", { limit: 10000, sortBy: { column: "name", order: "asc" } });
+  let allFiles: FileEntry[];
+  if (fileListCache && Date.now() < fileListCache.expiry) {
+    allFiles = fileListCache.files;
+  } else {
+    const { data, error: listError } = await supabase.storage
+      .from(BUCKET_NAME)
+      .list("", { limit: 10000, sortBy: { column: "name", order: "asc" } });
 
-  if (listError || !allFiles) {
-    console.log("Warning: Could not list storage files for batch image resolution:", listError?.message);
-    applyFallbackDefaults(result, itemIds, categoryDefaults, supabaseUrl);
-    return result;
+    if (listError || !data) {
+      console.log("Warning: Could not list storage files for batch image resolution:", listError?.message);
+      applyFallbackDefaults(result, itemIds, categoryDefaults, supabaseUrl);
+      return result;
+    }
+
+    allFiles = data;
+    fileListCache = { files: allFiles, expiry: Date.now() + FILE_LIST_TTL_MS };
   }
 
   // 2. Match files to item IDs: find the first file whose name starts with each ID

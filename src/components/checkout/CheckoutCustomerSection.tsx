@@ -168,7 +168,8 @@ export function CheckoutCustomerSection({
             </p>
             {hasCreditUI && (
               <>
-                {!showCreditSection && creditApplied === 0 && (
+                {/* Only show Apply when there is remaining credit/debit to apply (prevent double application) */}
+                {!showCreditSection && creditApplied === 0 && creditApplied !== customerCreditBalance && (
                   <button
                     type="button"
                     onClick={onShowCreditSection}

@@ -16,7 +16,11 @@ interface ReturnCreditSectionProps {
   onCancel: () => void;
   onRemove: () => void;
   onEdit?: () => void;
+  /** Optional message when fully paid with no credit applied. Defaults to return-specific message. */
+  fullyPaidMessage?: string;
 }
+
+const DEFAULT_FULLY_PAID_MESSAGE = "This return is fully paid. Your store credit remains available for future rentals or returns.";
 
 export function ReturnCreditSection({
   showCreditSection,
@@ -31,6 +35,7 @@ export function ReturnCreditSection({
   onCancel,
   onRemove,
   onEdit,
+  fullyPaidMessage = DEFAULT_FULLY_PAID_MESSAGE,
 }: ReturnCreditSectionProps) {
   const formatCurrency = formatCurrencyARS;
 
@@ -38,19 +43,21 @@ export function ReturnCreditSection({
     return null;
   }
 
-  // Return fully paid and no credit applied: show friendly message
+  // Fully paid and no credit applied: show friendly message
   if (balanceDueBeforeCredit < 0.01 && creditApplied === 0) {
     return (
       <div className={`rounded-lg border px-3 py-2.5 text-sm ${customerCreditBalance > 0 ? "border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20" : "border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-950/20"}`}>
         <p className={customerCreditBalance > 0 ? "text-blue-700 dark:text-blue-300" : "text-purple-700 dark:text-purple-300"}>
-          This return is fully paid. Your store credit remains available for future rentals or returns.
+          {fullyPaidMessage}
         </p>
       </div>
     );
   }
 
-  // Show link when credit not applied but there is balance due
-  if (!showCreditSection && creditApplied === 0) {
+  // Show link when credit not applied, there is balance due, and credit is not fully used (prevent double application)
+  const hasRemainingToApply = (customerCreditBalance > 0 && creditApplied < customerCreditBalance) ||
+    (customerCreditBalance < 0 && creditApplied > customerCreditBalance);
+  if (!showCreditSection && creditApplied === 0 && hasRemainingToApply) {
     return (
       <div>
         <button

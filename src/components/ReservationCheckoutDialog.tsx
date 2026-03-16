@@ -6,12 +6,13 @@ import { ScrollArea } from "./ui/scroll-area";
 import { Loader2, ShoppingCart, Lock } from "lucide-react";
 import { useReservationCheckout } from "./reservation-checkout/hooks/useReservationCheckout";
 import { ReservationCheckoutCustomerInfo } from "./reservation-checkout/ReservationCheckoutCustomerInfo";
-import { ReservationCheckoutCreditBanner } from "./reservation-checkout/ReservationCheckoutCreditBanner";
 import { ReservationCheckoutItemDetails } from "./reservation-checkout/ReservationCheckoutItemDetails";
 import { ReservationCheckoutDiscountSection } from "./reservation-checkout/ReservationCheckoutDiscountSection";
 import { ReservationCheckoutSurplusSection } from "./reservation-checkout/ReservationCheckoutSurplusSection";
 import { ReservationCheckoutTotals } from "./reservation-checkout/ReservationCheckoutTotals";
 import { ReservationCheckoutPaymentSection } from "./reservation-checkout/ReservationCheckoutPaymentSection";
+import { ReturnCreditSection } from "./return-checkout/ReturnCreditSection";
+import { Wallet } from "lucide-react";
 
 interface ReservationCheckoutDialogProps {
   open: boolean;
@@ -68,8 +69,19 @@ export function ReservationCheckoutDialog({
             <div className="space-y-4">
               <ReservationCheckoutCustomerInfo customer={details.customer} />
 
-              {hook.creditApplied !== 0 && (
-                <ReservationCheckoutCreditBanner creditApplied={hook.creditApplied} formatCurrency={formatCurrency} />
+              {/* Store credit banner: show when customer has credit so they're aware */}
+              {hook.customerCreditBalance !== 0 && (
+                <div className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border ${hook.customerCreditBalance > 0 ? "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800" : "bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800"}`}>
+                  <Wallet className={`w-4 h-4 mt-0.5 flex-shrink-0 ${hook.customerCreditBalance > 0 ? "text-blue-600 dark:text-blue-400" : "text-purple-600 dark:text-purple-400"}`} />
+                  <div>
+                    <p className={`text-sm font-medium ${hook.customerCreditBalance > 0 ? "text-blue-700 dark:text-blue-300" : "text-purple-700 dark:text-purple-300"}`}>
+                      {hook.customerCreditBalance > 0 ? `Store credit available: ${formatCurrency(hook.customerCreditBalance)}` : `Store debit: ${formatCurrency(Math.abs(hook.customerCreditBalance))}`}
+                    </p>
+                    <p className="text-xs mt-0.5 text-muted-foreground">
+                      {hook.customerCreditBalance > 0 ? "You can apply it to this checkout below, or keep it for future rentals." : "It can be settled with this checkout below."}
+                    </p>
+                  </div>
+                </div>
               )}
 
               <Separator />
@@ -174,6 +186,33 @@ export function ReservationCheckoutDialog({
                 currentRentalItemId={hook.currentRentalItemId}
                 formatCurrency={formatCurrency}
               />
+
+              {/* Store Credit / Outstanding Balance — show whenever customer has credit */}
+              {hook.customerCreditBalance !== 0 && (
+                <ReturnCreditSection
+                  showCreditSection={hook.showCreditSection}
+                  creditApplied={hook.creditApplied}
+                  customerCreditBalance={hook.customerCreditBalance}
+                  balanceDueBeforeCredit={hook.balanceDueBeforeCredit}
+                  tempCreditAmount={hook.tempCreditAmount}
+                  onShowSection={() => {
+                    if (hook.customerCreditBalance < 0) {
+                      hook.setTempCreditAmount(Math.abs(hook.customerCreditBalance).toString());
+                    } else {
+                      const maxApplicable = Math.min(Math.abs(hook.customerCreditBalance), hook.balanceDueBeforeCredit);
+                      hook.setTempCreditAmount(maxApplicable.toString());
+                    }
+                    hook.setShowCreditSection(true);
+                  }}
+                  onHideSection={() => hook.setShowCreditSection(false)}
+                  onTempValueChange={hook.setTempCreditAmount}
+                  onApply={hook.handleApplyCredit}
+                  onCancel={hook.handleCancelCredit}
+                  onRemove={hook.handleRemoveCredit}
+                  onEdit={hook.handleEditCredit}
+                  fullyPaidMessage="This item is fully paid. Your store credit remains available for future rentals or returns."
+                />
+              )}
 
               {hasSurplus && (
                 <ReservationCheckoutSurplusSection

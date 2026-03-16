@@ -615,6 +615,32 @@ export function registerReservationConversionRoutes(
         return c.json({ error: validationResult.error }, 400);
       }
 
+      // ── Item-level surplus validation: require explicit surplusHandling when this item is overpaid ──
+      // Uses item-level totals (not order-level) because reservation conversion is an item-level checkout.
+      // Order-level surplus from other items (e.g. discounts/refunds on returned items) is irrelevant here.
+      const itemOverpaymentPreCheck = existingItemPayments + newPaymentsTotal + creditAppliedAmount - itemGrandTotal;
+      if (itemOverpaymentPreCheck > 0.01 && customerId) {
+        if (!surplusHandling || typeof surplusHandling !== "object" || !surplusHandling.type || surplusHandling.amount == null) {
+          return c.json(
+            {
+              error:
+                "There is an overpayment on this order. Please choose how to handle it: refund or store credit. Refresh the page and try again.",
+              errorType: "surplus_handling_required",
+            },
+            400
+          );
+        }
+        if (surplusHandling.type === "refund" && !surplusHandling.refundMethodId) {
+          return c.json(
+            {
+              error: "Refund method is required when choosing to refund the surplus.",
+              errorType: "surplus_refund_method_required",
+            },
+            400
+          );
+        }
+      }
+
       const nowUTC = new Date();
 
       // Get customer and item info for drawer transaction descriptions
@@ -831,14 +857,11 @@ export function registerReservationConversionRoutes(
         console.log("Created rental_event checked_out for rental_item " + rentalItemId);
       }
 
-      // Step 5: Handle overpayment/surplus
-      // This can happen when item was swapped to a cheaper one after reservation fee was paid
-      // NOTE: creditAppliedAmount must be included because:
-      // - existingPayments was read from the view BEFORE the Store Credit offset payment was inserted (Step 0a)
-      // - For debit (negative): the customer's extra payment settled the debit, not the rental — subtract it
-      // - For credit (positive): the credit covered part of the rental — add it
-      const totalPaidAfterConversion = existingPayments + newPaymentsTotal + creditAppliedAmount;
-      const overpayment = totalPaidAfterConversion - grandTotal;
+      // Step 5: Handle overpayment/surplus (item-level)
+      // Uses item-level totals because reservation conversion is an item-level checkout.
+      // Order-level surplus from other items (e.g. discounts/refunds on returned items) is irrelevant here.
+      const totalPaidForItemAfterConversion = existingItemPayments + newPaymentsTotal + creditAppliedAmount;
+      const overpayment = totalPaidForItemAfterConversion - itemGrandTotal;
       let surplusAmount = 0;
       let surplusAction = '';
 
@@ -1066,107 +1089,15 @@ export function registerReservationConversionRoutes(
             }
           }
         } else {
-          // Backward compatible: no surplusHandling sent, default to credit
-          // Same pattern as above: create offsetting negative payment + update credit_balance
-          const creditAmount = Math.round(overpayment);
-          if (creditAmount > 0) {
-            // A) Idempotency check
-            const { data: existingSurplusCreditLegacy } = await supabase
-              .from("payments")
-              .select("id")
-              .eq("rental_id", rentalId)
-              .eq("reference", "surplus-to-store-credit-conversion")
-              .limit(1)
-              .maybeSingle();
-
-            if (existingSurplusCreditLegacy) {
-              console.log(`⚠️ [SURPLUS-LEGACY] Store-credit offset already exists for rental ${rentalId}. Skipping (idempotent).`);
-              surplusAmount = creditAmount;
-              surplusAction = 'credit';
-            } else {
-              // B) Look up Store Credit payment method
-              const { data: scMethodLegacy, error: scErrLegacy } = await supabase
-                .from("payments_methods")
-                .select("id")
-                .ilike("payment_method", "Store Credit")
-                .single();
-
-              if (scErrLegacy || !scMethodLegacy) {
-                console.log("Error finding Store Credit payment method for legacy surplus offset:", scErrLegacy);
-              } else {
-                // C) Insert negative offset payment
-                const { data: offsetRecLegacy, error: offsetErrLegacy } = await supabase
-                  .from("payments")
-                  .insert({
-                    rental_id: rentalId,
-                    payment_method_id: (scMethodLegacy as any).id,
-                    method: "store credit",
-                    amount: -creditAmount,
-                    currency: "ARS",
-                    paid_at: nowUTC.toISOString(),
-                    reference: "surplus-to-store-credit-conversion",
-                    created_by: getCurrentUserDisplay(c),
-                  })
-                  .select("id")
-                  .single();
-
-                if (offsetErrLegacy || !offsetRecLegacy) {
-                  console.log("Error creating legacy surplus store-credit offset payment:", offsetErrLegacy);
-                } else {
-                  paymentIds.push((offsetRecLegacy as any).id);
-                  surplusAmount = creditAmount;
-                  surplusAction = 'credit';
-
-                  // D) Update customer credit_balance with net surplus (surplus minus any old-style swap credit already given)
-                  const netCreditToAddLegacy = Math.max(0, creditAmount - swapCreditAlreadyGiven);
-                  if (netCreditToAddLegacy > 0 && customerId) {
-                    const { data: custDataCreditLegacy, error: custFetchErrCreditLegacy } = await supabase
-                      .from("customers")
-                      .select("credit_balance")
-                      .eq("customer_id", customerId)
-                      .single();
-
-                    if (!custFetchErrCreditLegacy && custDataCreditLegacy) {
-                      const curBal = parseFloat((custDataCreditLegacy as any).credit_balance) || 0;
-                      const newBal = curBal + netCreditToAddLegacy;
-                      const { error: creditUpdateErrLegacy } = await supabase
-                        .from("customers")
-                        .update({ credit_balance: newBal, updated_at: nowUTC.toISOString() })
-                        .eq("customer_id", customerId);
-                      if (creditUpdateErrLegacy) {
-                        console.log("Error updating customer credit_balance during legacy store-credit surplus:", creditUpdateErrLegacy);
-                      } else {
-                        console.log(`✅ [SURPLUS-LEGACY] Customer credit_balance updated: ${curBal} → ${newBal} (added ${netCreditToAddLegacy}, surplus=${creditAmount}, swapCreditAlreadyGiven=${swapCreditAlreadyGiven})`);
-
-                        // Insert ledger entry for legacy surplus-to-credit
-                        const { error: legacySurplusLedgerErr } = await supabase
-                          .from("store_credit_ledger")
-                          .insert({
-                            customer_id: customerId,
-                            rental_id: rentalId,
-                            rental_item_id: rentalItemId,
-                            amount: netCreditToAddLegacy,
-                            balance_after: newBal,
-                            entry_type: "surplus_to_credit",
-                            notes: `Legacy reservation conversion surplus: ${netCreditToAddLegacy} added as store credit`,
-                            created_by: getCurrentUserDisplay(c),
-                          });
-                        if (legacySurplusLedgerErr) {
-                          console.log("⚠️ [LEDGER] Error inserting legacy surplus ledger entry:", legacySurplusLedgerErr.message);
-                        }
-                      }
-                    } else {
-                      console.log("Error fetching customer for legacy store-credit surplus update:", custFetchErrCreditLegacy);
-                    }
-                  } else if (swapCreditAlreadyGiven > 0) {
-                    console.log(`✅ [SURPLUS-LEGACY] Net credit is 0 (surplus=${creditAmount} fully covered by swapCreditAlreadyGiven=${swapCreditAlreadyGiven}). No credit_balance update needed.`);
-                  }
-
-                  console.log(`✅ [SURPLUS-LEGACY] Created store-credit offset payment of -${creditAmount} for rental ${rentalId}.`);
-                }
-              }
-            }
-          }
+          // Defensive: overpayment exists but surplusHandling not provided (should be caught by early validation)
+          return c.json(
+            {
+              error:
+                "There is an overpayment on this order. Please choose how to handle it: refund or store credit. Refresh the page and try again.",
+              errorType: "surplus_handling_required",
+            },
+            400
+          );
         }
       }
 

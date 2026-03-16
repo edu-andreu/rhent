@@ -21,12 +21,28 @@ interface DressCardProps {
   hideAvailabilityBadge?: boolean;
 }
 
+function getBgColor(badgeClass?: string): string {
+  if (!badgeClass) return '#d1d5db';
+  const match = badgeClass.match(/bg-\[(#[0-9A-Fa-f]{6})\]/);
+  return match ? match[1] : '#d1d5db';
+}
+
+function capitalize(text: string): string {
+  return text.replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function getAvailabilityColor(availabilityStatus?: string): string {
+  if (!availabilityStatus) return '#6b7280';
+  const lower = availabilityStatus.toLowerCase();
+  if (lower.includes('unavailable') || lower === 'unavailable') return '#ef4444';
+  if (lower.includes('available') || lower === 'available') return '#10b981';
+  return '#6b7280';
+}
+
 export const DressCard = memo(function DressCard({ dress, onRent, onReserve, onBuy, onEdit, onDelete, onMoveToShowroom, isMovingToShowroom, defaultReturnLocationId, editMode = false, hideFooter = false, hideAvailabilityBadge = false }: DressCardProps) {
-  // Brief processing animation state for action buttons
   const [processingAction, setProcessingAction] = useState<'rent' | 'reserve' | 'buy' | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -41,28 +57,6 @@ export const DressCard = memo(function DressCard({ dress, onRent, onReserve, onB
       setProcessingAction(null);
     }, 400);
   }, [processingAction, dress]);
-
-  // Extract background color from Tailwind class (e.g., "bg-[#198754]" -> "#198754")
-  const getBgColor = (badgeClass?: string): string => {
-    if (!badgeClass) return '#d1d5db'; // Default gray
-    const match = badgeClass.match(/bg-\[(#[0-9A-Fa-f]{6})\]/);
-    return match ? match[1] : '#d1d5db';
-  };
-
-  // Capitalize first letter of each word
-  const capitalize = (text: string): string => {
-    return text.replace(/\b\w/g, char => char.toUpperCase());
-  };
-
-  // Get availability badge color
-  const getAvailabilityColor = (availabilityStatus?: string): string => {
-    if (!availabilityStatus) return '#6b7280'; // Gray for unknown
-    const lower = availabilityStatus.toLowerCase();
-    // Check for unavailable first (before available) since it contains "available"
-    if (lower.includes('unavailable') || lower === 'unavailable') return '#ef4444'; // Red
-    if (lower.includes('available') || lower === 'available') return '#10b981'; // Green
-    return '#6b7280'; // Gray for other
-  };
 
   return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow flex flex-col h-full">

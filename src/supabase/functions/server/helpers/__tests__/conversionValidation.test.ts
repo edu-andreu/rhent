@@ -70,7 +70,7 @@ describe("validateConversionPayments", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("rejects when surplus exists but no surplus handling is provided", () => {
+    it("ignores order-level surplus when validating per-item payment only", () => {
       const result = validate({
         grandTotal: 15000,
         existingPayments: 25000,
@@ -79,10 +79,7 @@ describe("validateConversionPayments", () => {
         existingItemPayments: 25000,
         surplusHandling: null,
       });
-      expect(result.valid).toBe(false);
-      if (!result.valid) {
-        expect(result.error).toContain("exceeds order grand total");
-      }
+      expect(result.valid).toBe(true);
     });
   });
 

@@ -269,93 +269,114 @@ export function DialogProvider({
     handleReturn: returnDialog.handleReturn,
   };
 
+  const closeRentalDialog = useCallback(() => setSelectedDressForRental(null), []);
+  const closeReservationDialog = useCallback(() => setSelectedDressForReservation(null), []);
+  const closeCart = useCallback(() => setShowCart(false), []);
+  const closeCheckoutDialog = useCallback(() => setShowCheckout(false), []);
+  const clearDrawerError = useCallback(() => setCheckoutDrawerError(null), []);
+  const handleCheckoutAddCustomer = useCallback(() => {
+    setShowCheckout(false);
+    customerDialog.handleAddNewCustomer();
+  }, [customerDialog.handleAddNewCustomer]);
+
   return (
     <DialogContext.Provider value={value}>
       {children}
 
-      {/* ---- All dialog components ---- */}
+      {!!selectedDressForRental && (
+        <RentalDialog
+          dress={selectedDressForRental}
+          open
+          onClose={closeRentalDialog}
+          onConfirm={confirmRental}
+        />
+      )}
 
-      <RentalDialog
-        dress={selectedDressForRental}
-        open={!!selectedDressForRental}
-        onClose={() => setSelectedDressForRental(null)}
-        onConfirm={confirmRental}
-      />
+      {!!selectedDressForReservation && (
+        <ReservationDialog
+          dress={selectedDressForReservation}
+          open
+          onClose={closeReservationDialog}
+          onConfirm={confirmReservation}
+        />
+      )}
 
-      <ReservationDialog
-        dress={selectedDressForReservation}
-        open={!!selectedDressForReservation}
-        onClose={() => setSelectedDressForReservation(null)}
-        onConfirm={confirmReservation}
-      />
+      {showCart && (
+        <Cart
+          open
+          onClose={closeCart}
+          items={cartItems}
+          onRemoveItem={handleRemoveFromCart}
+          onCheckout={handleCheckout}
+          onUpdateItemNotes={handleUpdateItemNotes}
+        />
+      )}
 
-      <Cart
-        open={showCart}
-        onClose={() => setShowCart(false)}
-        items={cartItems}
-        onRemoveItem={handleRemoveFromCart}
-        onCheckout={handleCheckout}
-        onUpdateItemNotes={handleUpdateItemNotes}
-      />
+      {showCheckout && (
+        <CheckoutDialog
+          open
+          onClose={closeCheckoutDialog}
+          onConfirm={handlePaymentComplete}
+          cartItems={cartItems}
+          customers={customers}
+          onAddNewCustomer={handleCheckoutAddCustomer}
+          drawerError={checkoutDrawerError}
+          onClearDrawerError={clearDrawerError}
+        />
+      )}
 
-      <CheckoutDialog
-        open={showCheckout}
-        onClose={() => setShowCheckout(false)}
-        onConfirm={handlePaymentComplete}
-        cartItems={cartItems}
-        customers={customers}
-        onAddNewCustomer={() => {
-          setShowCheckout(false);
-          customerDialog.handleAddNewCustomer();
-        }}
-        drawerError={checkoutDrawerError}
-        onClearDrawerError={() => setCheckoutDrawerError(null)}
-      />
+      {dressDialog.showAddDressDialog && (
+        <AddDressDialog
+          open
+          onClose={dressDialog.closeAddDialog}
+          onAdd={dressDialog.handleAddDress}
+          editDress={dressDialog.dressToEdit || undefined}
+        />
+      )}
 
-      <AddDressDialog
-        open={dressDialog.showAddDressDialog}
-        onClose={dressDialog.closeAddDialog}
-        onAdd={dressDialog.handleAddDress}
-        editDress={dressDialog.dressToEdit || undefined}
-      />
+      {customerDialog.showAddCustomerDialog && (
+        <AddCustomerDialog
+          open
+          onClose={customerDialog.closeDialog}
+          onAdd={customerDialog.handleAddCustomer}
+          editCustomer={customerDialog.customerToEdit || undefined}
+        />
+      )}
 
-      <AddCustomerDialog
-        open={customerDialog.showAddCustomerDialog}
-        onClose={customerDialog.closeDialog}
-        onAdd={customerDialog.handleAddCustomer}
-        editCustomer={customerDialog.customerToEdit || undefined}
-      />
+      {dressDialog.deleteDialogOpen && (
+        <AlertDialog
+          open
+          onOpenChange={dressDialog.setDeleteDialogOpen}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete &quot;{dressDialog.dressToDelete?.name}&quot; from your
+                inventory. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={dressDialog.confirmDeleteDress}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
 
-      <AlertDialog
-        open={dressDialog.deleteDialogOpen}
-        onOpenChange={dressDialog.setDeleteDialogOpen}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete &quot;{dressDialog.dressToDelete?.name}&quot; from your
-              inventory. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={dressDialog.confirmDeleteDress}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <ReturnCheckoutDialog
-        open={returnDialog.returnDialogOpen}
-        rentalItemId={returnDialog.returningRentalItemId}
-        onClose={returnDialog.closeDialog}
-        onConfirm={returnDialog.handleReturnConfirm}
-      />
+      {returnDialog.returnDialogOpen && (
+        <ReturnCheckoutDialog
+          open
+          rentalItemId={returnDialog.returningRentalItemId}
+          onClose={returnDialog.closeDialog}
+          onConfirm={returnDialog.handleReturnConfirm}
+        />
+      )}
     </DialogContext.Provider>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Dress } from "../types";
@@ -74,7 +74,7 @@ export function ReservationDialog({ dress, open, onClose, onConfirm }: Reservati
     onClose();
   };
 
-  const pricing = calculatePricing(
+  const pricing = useMemo(() => calculatePricing(
     booking.startDate,
     booking.endDate,
     booking.autoCalculatedEndDate,
@@ -82,7 +82,7 @@ export function ReservationDialog({ dress, open, onClose, onConfirm }: Reservati
     dress?.pricePerDay || 0,
     extraDaysPrice,
     holidays
-  );
+  ), [booking.startDate, booking.endDate, booking.autoCalculatedEndDate, rentalDays, dress?.pricePerDay, extraDaysPrice, holidays]);
 
   if (!dress) return null;
 

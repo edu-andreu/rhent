@@ -32,6 +32,8 @@ export function useReservationCheckout({
 
   const [customerCreditBalance, setCustomerCreditBalance] = useState<number>(0);
   const [creditApplied, setCreditApplied] = useState<number>(0);
+  const [showCreditSection, setShowCreditSection] = useState(false);
+  const [tempCreditAmount, setTempCreditAmount] = useState<string>('');
 
   const [drawerStatus, setDrawerStatus] = useState<'open' | 'closed' | 'loading'>('loading');
   const [drawerBusinessDate, setDrawerBusinessDate] = useState<string | null>(null);
@@ -167,13 +169,48 @@ export function useReservationCheckout({
   const orderGrandTotal = itemTotal + otherItemsTotal;
 
   // Item-level balance: must match server-side conversionValidation.ts logic
+  const balanceDueBeforeCredit = Math.max(0, itemTotal - thisItemPaymentsTotal);
   const itemBalanceDue = Math.max(0, itemTotal - thisItemPaymentsTotal - creditApplied);
   const balanceDue = itemBalanceDue;
   const hasBalance = balanceDue > 0.01;
 
-  // Order-level surplus detection (overpayment across all items)
-  const surplus = Math.max(0, orderPaymentsTotal - orderGrandTotal);
-  const hasSurplus = surplus > 0.01;
+  // Credit handlers (apply, cancel, remove, edit)
+  const handleApplyCredit = () => {
+    const value = parseFloat(tempCreditAmount) || 0;
+    const maxApplicable = customerCreditBalance > 0
+      ? Math.min(customerCreditBalance, balanceDueBeforeCredit)
+      : Math.abs(customerCreditBalance);
+    const clamped = customerCreditBalance < 0 ? -Math.min(value, maxApplicable) : Math.min(value, maxApplicable);
+    setCreditApplied(clamped);
+    setShowCreditSection(false);
+    setTempCreditAmount('');
+  };
+
+  const handleCancelCredit = () => {
+    setTempCreditAmount('');
+    setShowCreditSection(false);
+    if (customerCreditBalance < 0 && creditApplied === 0) setCreditApplied(customerCreditBalance);
+  };
+
+  const handleRemoveCredit = () => {
+    setCreditApplied(0);
+    setTempCreditAmount('');
+    setShowCreditSection(false);
+  };
+
+  const handleEditCredit = () => {
+    setTempCreditAmount(Math.abs(creditApplied).toString());
+    setCreditApplied(0);
+    setShowCreditSection(true);
+  };
+
+  // Auto-clamp credit when balance due changes
+  useEffect(() => {
+    if (creditApplied > 0 && customerCreditBalance > 0) {
+      const maxApplicable = Math.min(customerCreditBalance, balanceDueBeforeCredit);
+      if (creditApplied > maxApplicable) setCreditApplied(maxApplicable);
+    }
+  }, [balanceDueBeforeCredit, customerCreditBalance, creditApplied]);
 
   // Item-level minimum: rentDownPct of item total, minus what's already paid
   const itemMinimumRequired = Math.round(itemTotal * rentDownPct / 100);
@@ -185,8 +222,16 @@ export function useReservationCheckout({
   // Shared payment allocations
   const payments = usePaymentAllocations({ balanceDue, minimumRequired });
 
+  // Order-level surplus detection based on existing order totals only.
+  // This reflects surplus that already exists on the rental (e.g. from returns or swaps)
+  // before any new conversion payment is applied. Order-level surplus resolution is
+  // handled server-side in reservationConversion.tsx Step 5.
+  const surplus = Math.max(0, orderPaymentsTotal - orderGrandTotal);
+  const hasSurplus = surplus > 0.01;
+
   const canConfirm = hasBalance
     ? payments.allocatedTotal >= minimumRequired - 0.01 && payments.allocatedTotal <= balanceDue + 0.01 && payments.paymentAllocations.length > 0
+        && (!(hasSurplus && surplusHandling === 'refund') || !!refundMethodId)
     : hasSurplus && surplusHandling === 'refund'
       ? !!refundMethodId
       : true;
@@ -196,7 +241,7 @@ export function useReservationCheckout({
     if (extraDays.extraDaysInitialized && payments.paymentAllocations.length > 0) {
       payments.resetAllocations();
     }
-  }, [discount.discountValue, discount.discountType, extraDays.extraDaysOverride]);
+  }, [discount.discountValue, discount.discountType, extraDays.extraDaysOverride, creditApplied]);
 
   const handleConfirm = async () => {
     if (!details) return;
@@ -299,6 +344,8 @@ export function useReservationCheckout({
       extraDays.resetExtraDays();
       setCustomerCreditBalance(0);
       setCreditApplied(0);
+      setShowCreditSection(false);
+      setTempCreditAmount('');
       setSurplusHandling('credit');
       setRefundMethodId('');
       onClose();
@@ -348,7 +395,17 @@ export function useReservationCheckout({
     setCancellationFeeOverride: extraDays.setCancellationFeeOverride,
     extraDayRate: extraDays.extraDayRate,
     creditApplied,
+    setCreditApplied,
     customerCreditBalance,
+    showCreditSection,
+    setShowCreditSection,
+    tempCreditAmount,
+    setTempCreditAmount,
+    balanceDueBeforeCredit,
+    handleApplyCredit,
+    handleCancelCredit,
+    handleRemoveCredit,
+    handleEditCredit,
     itemBasePrice,
     itemTotal,
     alreadyPaid: orderPaymentsTotal,

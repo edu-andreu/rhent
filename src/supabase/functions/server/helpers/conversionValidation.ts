@@ -14,21 +14,10 @@ export type ConversionValidationResult =
   | { valid: true; itemBalanceDue: number; additionalMinimum: number; itemDownPct: number }
   | { valid: false; error: string; itemDownPct?: number };
 
-/**
- * Pure validation logic for reservation-to-rental conversion payments.
- *
- * Checks three things in order:
- * 1. Per-item overpayment — new payments must not exceed the item's remaining balance
- * 2. Per-item minimum — new payments must meet the down-payment percentage requirement
- * 3. Order-level overpayment — total payments + credit must not exceed grand total
- *    (skipped when surplusHandling is provided, since the surplus will be resolved downstream)
- */
 export function validateConversionPayments(
   params: ConversionValidationParams,
 ): ConversionValidationResult {
   const {
-    grandTotal,
-    existingPayments,
     newPaymentsTotal,
     creditApplied,
     itemGrandTotal,
@@ -65,17 +54,6 @@ export function validateConversionPayments(
       error:
         `Payment is below the minimum required for this item. Rental requires ${itemDownPct}% upfront.`,
       itemDownPct,
-    };
-  }
-
-  if (
-    !surplusHandling &&
-    existingPayments + newPaymentsTotal + creditApplied > grandTotal + 0.01
-  ) {
-    return {
-      valid: false,
-      error:
-        "Payment + credit exceeds order grand total. Overpayment is not allowed.",
     };
   }
 

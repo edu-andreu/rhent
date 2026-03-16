@@ -779,9 +779,13 @@ payments:`, payments);
       );
     }
 
-    // Order-level: if total coverage exceeds grand total (surplus), require surplusHandling so it can be applied as credit/refund
-    if (existingPaymentsTotal + totalCoverage > computedGrandTotal + 0.01) {
-      const surplusAmount = Math.round(existingPaymentsTotal + totalCoverage - computedGrandTotal);
+    // Item-level: if this item's total paid (existing + new) exceeds its grand total, require surplusHandling.
+    // Uses item-level totals (not order-level) because return checkout is item-level.
+    // Order-level surplus from other items (e.g. discounts/refunds on other returned items) is irrelevant here.
+    const itemTotalPaidAfterReturn = existingItemPayments + totalCoverage;
+    const itemSurplus = itemTotalPaidAfterReturn - itemGrandTotal;
+    if (itemSurplus > 0.01) {
+      const surplusAmount = Math.round(itemSurplus);
       if (!surplusHandling || typeof surplusHandling !== "object" || !surplusHandling.type || surplusHandling.amount == null) {
         return c.json(
           {
@@ -1039,9 +1043,10 @@ payments:`, payments);
     let surplusAmount = 0;
     let surplusAction = '';
     if (surplusHandling && typeof surplusHandling === 'object') {
-      const serverGrandTotal = computedGrandTotal;
-      const serverPaymentsTotal = existingPaymentsTotal;
-      const serverSurplus = Math.max(0, serverPaymentsTotal - serverGrandTotal);
+      // Item-level surplus: only consider this item's payments vs this item's total
+      const serverItemGrandTotal = itemGrandTotal;
+      const serverItemPayments = existingItemPayments;
+      const serverSurplus = Math.max(0, serverItemPayments - serverItemGrandTotal);
       // Use rounded surplus from frontend if provided, but cap to server-calculated surplus
       surplusAmount = Math.min(
         parseFloat(surplusHandling.amount) || 0,
