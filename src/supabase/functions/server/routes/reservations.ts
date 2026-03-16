@@ -6,6 +6,14 @@ import * as kv from "../kv_store.ts";
 export function registerReservationsRoutes(app: Hono, supabase: SupabaseClient) {
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const getTodayGmt3String = () => {
+    const now = new Date();
+    const utc = now.getTime() + now.getTimezoneOffset() * 60000;
+    const gmt3 = new Date(utc + 3600000 * -3);
+    return `${gmt3.getFullYear()}-${String(gmt3.getMonth() + 1).padStart(2, "0")}-${String(
+      gmt3.getDate(),
+    ).padStart(2, "0")}`;
+  };
 
 // GET active reservations - rental_items with status 'reserved'
 app.get("/make-server-918f1e54/reservations/active", async (c) => {
@@ -70,10 +78,7 @@ app.get("/make-server-918f1e54/reservations/active", async (c) => {
 
     // Auto-cancel overdue reservations past the grace period (1 business day)
     const OVERDUE_GRACE_BUSINESS_DAYS = 1;
-    const now = new Date();
-    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-    const gmt3 = new Date(utc + (3600000 * -3));
-    const todayStr = `${gmt3.getFullYear()}-${String(gmt3.getMonth() + 1).padStart(2, '0')}-${String(gmt3.getDate()).padStart(2, '0')}`;
+    const todayStr = getTodayGmt3String();
 
     const autoCancelledIds = new Set<string>();
     for (const item of (data || [])) {
@@ -177,6 +182,8 @@ app.get("/make-server-918f1e54/reservations/active", async (c) => {
         imageUrl = `${supabaseUrl}/storage/v1/object/public/photos/${item.inventory_items.category.default_image}`;
       }
       
+      const isOverdue = item.start_date < todayStr;
+
       return {
         id: item.id,
         dressId: item.item_id,
@@ -199,6 +206,7 @@ app.get("/make-server-918f1e54/reservations/active", async (c) => {
         brand: item.inventory_items?.brand?.brand || "",
         description: item.inventory_items?.description || "",
         alteration_notes: item.alteration_notes || "",
+        isOverdue,
       };
     }));
 
@@ -225,9 +233,10 @@ app.post("/make-server-918f1e54/calculate-cancellation", async (c) => {
 
     // Fetch rental item details with unit_price
     console.log("Querying rental_items table with id:", rentalItemId);
+
     const { data: rentalItem, error: itemError } = await supabase
       .from("rental_items")
-      .select("id, status, rental_id, unit_price")
+      .select("id, status, rental_id, unit_price, start_date")
       .eq("id", rentalItemId)
       .single();
 
@@ -283,7 +292,10 @@ app.post("/make-server-918f1e54/calculate-cancellation", async (c) => {
     const totalPaidRental = payments?.reduce((sum, p) => sum + parseFloat(p.amount), 0) || 0;
     console.log("Total paid from payments table:", totalPaidRental, "Payments:", payments);
 
-    // Get cancellation fee percentage from config
+    const todayStr = getTodayGmt3String();
+    const isOverdue = (rentalItem as any).start_date < todayStr;
+
+    // Get cancellation fee percentage from config (always applies on cancellation)
     const cancellationFeePercent = parseFloat((await kv.get("config_cancelation_fee")) as string || "25");
     
     // Calculate this item's order total (after discount)
@@ -332,6 +344,7 @@ app.post("/make-server-918f1e54/calculate-cancellation", async (c) => {
       creditAmount,
       itemStatus: rentalItem.status,
       itemCount: allItems?.length || 1,
+      isOverdue,
     });
   } catch (error) {
     console.log("Error calculating cancellation:", error);
@@ -352,7 +365,7 @@ app.post("/make-server-918f1e54/cancel-reservation", async (c) => {
     // Fetch rental item details with unit_price
     const { data: rentalItem, error: itemError } = await supabase
       .from("rental_items")
-      .select("id, status, item_id, rental_id, unit_price")
+      .select("id, status, item_id, rental_id, unit_price, start_date")
       .eq("id", rentalItemId)
       .single();
 
@@ -415,7 +428,10 @@ app.post("/make-server-918f1e54/cancel-reservation", async (c) => {
     const totalPaidRental = payments?.reduce((sum, p) => sum + parseFloat(p.amount), 0) || 0;
     console.log("Total paid from payments table:", totalPaidRental);
 
-    // Get cancellation fee percentage from config
+    const todayStr = getTodayGmt3String();
+    const isOverdue = (rentalItem as any).start_date < todayStr;
+
+    // Get cancellation fee percentage from config (always applies on cancellation)
     const cancellationFeePercent = parseFloat((await kv.get("config_cancelation_fee")) as string || "25");
     
     // Calculate this item's order total (after discount)

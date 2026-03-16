@@ -151,6 +151,7 @@ export function useReservationCheckout({
       extraDays: extraDays.extraDaysCount,
       extraDayRate: extraDays.extraDayRate,
       extraDaysAmount: extraDays.extraDaysAmount,
+      cancellationFeeAmount: extraDays.cancellationFeeAmount,
       lateDays: 0,
       lateDayRate: 0,
       lateFeeAmount: 0,
@@ -249,9 +250,10 @@ export function useReservationCheckout({
           value: discount.discountValue,
           reason: discount.discountReason || undefined,
         } : undefined,
-        extraDays: extraDays.extraDaysCount !== extraDays.originalExtraDaysCount ? {
+        extraDays: (extraDays.extraDaysCount !== extraDays.originalExtraDaysCount ||
+          extraDays.cancellationFeeAmount !== extraDays.originalCancellationFeeAmount) ? {
           days: extraDays.extraDaysCount,
-          amount: extraDays.extraDaysAmount,
+          amount: extraDays.extraDaysAmount + (extraDays.cancellationFeeAmount || 0),
         } : undefined,
         surplusHandling: hasSurplus ? {
           type: surplusHandling,
@@ -337,6 +339,13 @@ export function useReservationCheckout({
     originalExtraDaysCount: extraDays.originalExtraDaysCount,
     extraDaysCount: extraDays.extraDaysCount,
     extraDaysAmount: extraDays.extraDaysAmount,
+    cancellationFeeAmount: extraDays.cancellationFeeAmount,
+    originalCancellationFeeAmount: extraDays.originalCancellationFeeAmount,
+    showCancellationFeeSection: extraDays.showCancellationFeeSection,
+    setShowCancellationFeeSection: extraDays.setShowCancellationFeeSection,
+    tempCancellationFeeValue: extraDays.tempCancellationFeeValue,
+    setTempCancellationFeeValue: extraDays.setTempCancellationFeeValue,
+    setCancellationFeeOverride: extraDays.setCancellationFeeOverride,
     extraDayRate: extraDays.extraDayRate,
     creditApplied,
     customerCreditBalance,

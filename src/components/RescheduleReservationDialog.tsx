@@ -114,14 +114,17 @@ export function RescheduleReservationDialog({ reservation, open, onClose, onConf
 
     setIsSubmitting(true);
     try {
-      const result = await postFunction<{ priceDifference?: number }>(`rental-items/${reservation.id}/reschedule`, {
+      const result = await postFunction<{ priceDifference?: number; overdueRescheduleFeeAmount?: number }>(`rental-items/${reservation.id}/reschedule`, {
         newStartDate: newStartStr,
         newEndDate: newEndStr,
       });
 
       if (result.priceDifference !== 0) {
         const direction = result.priceDifference! > 0 ? 'increased' : 'decreased';
-        toast.success(`Reservation rescheduled! Price ${direction} by ${formatCurrencyARS(Math.abs(result.priceDifference!))} — difference will be settled at rental checkout.`);
+        const feeNote = (result.overdueRescheduleFeeAmount || 0) > 0
+          ? ` (includes overdue reschedule fee of ${formatCurrencyARS(result.overdueRescheduleFeeAmount!)})`
+          : "";
+        toast.success(`Reservation rescheduled! Price ${direction} by ${formatCurrencyARS(Math.abs(result.priceDifference!))}${feeNote} — difference will be settled at rental checkout.`);
       } else {
         toast.success('Reservation rescheduled successfully!');
       }

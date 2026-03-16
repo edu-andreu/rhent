@@ -68,6 +68,7 @@ export interface ApiReservation {
   brand?: string;
   description?: string;
   alteration_notes?: string;
+  isOverdue?: boolean;
 }
 
 export interface ApiReservationResponse {

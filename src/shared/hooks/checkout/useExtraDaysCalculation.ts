@@ -8,6 +8,7 @@ interface ExtraDaysInfo {
   extraDaysAmount: number;
   extraDaysPricePct?: number;
   basePrice: number;
+  overdueRescheduleFeeAmount?: number;
 }
 
 interface UseExtraDaysCalculationOptions {
@@ -31,12 +32,22 @@ export function useExtraDaysCalculation({
   const [extraDaysInitialized, setExtraDaysInitialized] = useState(false);
   const [applicableExtraDays, setApplicableExtraDays] = useState<number>(0);
 
+  // Cancellation fee state (editable, initially from server)
+  const [cancellationFeeOverride, setCancellationFeeOverride] = useState<number | null>(null);
+  const [showCancellationFeeSection, setShowCancellationFeeSection] = useState(false);
+  const [tempCancellationFeeValue, setTempCancellationFeeValue] = useState<string>('');
+
   const originalExtraDaysCount = extraDaysInfo?.extraDaysCount || 0;
   const originalExtraDaysAmount = extraDaysInfo?.extraDaysAmount || 0;
+  const originalOverdueFeeAmount = extraDaysInfo?.overdueRescheduleFeeAmount || 0;
   const extraDaysPricePct = extraDaysInfo?.extraDaysPricePct || 75;
   const basePrice = extraDaysInfo?.basePrice || 0;
   const standardDayPrice = basePrice > 0 ? basePrice / configRentalDays : 0;
   const extraDayRate = standardDayPrice * (extraDaysPricePct / 100);
+
+  const cancellationFeeAmount = cancellationFeeOverride !== null
+    ? cancellationFeeOverride
+    : originalOverdueFeeAmount;
 
   const extraDaysCount = extraDaysOverride !== null ? extraDaysOverride : originalExtraDaysCount;
   const extraDaysAmount = extraDaysOverride !== null && extraDaysOverride !== originalExtraDaysCount
@@ -80,6 +91,9 @@ export function useExtraDaysCalculation({
     setExtraDaysOverride(null);
     setTempExtraDaysValue('');
     setExtraDaysInitialized(false);
+    setCancellationFeeOverride(null);
+    setShowCancellationFeeSection(false);
+    setTempCancellationFeeValue('');
   }, []);
 
   return {
@@ -97,6 +111,14 @@ export function useExtraDaysCalculation({
     extraDayRate,
     extraDaysPricePct,
     basePrice,
+    cancellationFeeAmount,
+    originalCancellationFeeAmount: originalOverdueFeeAmount,
+    cancellationFeeOverride,
+    setCancellationFeeOverride,
+    showCancellationFeeSection,
+    setShowCancellationFeeSection,
+    tempCancellationFeeValue,
+    setTempCancellationFeeValue,
     initializeFromServer,
     resetExtraDays,
   };

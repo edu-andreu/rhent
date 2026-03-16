@@ -4,6 +4,7 @@ export interface CheckoutLineItem {
   extraDays: number;
   extraDayRate: number;
   extraDaysAmount: number;
+  cancellationFeeAmount?: number;
   lateDays: number;
   lateDayRate: number;
   lateFeeAmount: number;
@@ -43,10 +44,14 @@ export interface CheckoutCalculationResult {
 export function calculateCheckout(input: CheckoutCalculationInput): CheckoutCalculationResult {
   const { items, discount, creditApplied, alreadyPaid } = input;
 
-  const enrichedItems = items.map(item => ({
-    ...item,
-    itemSubtotal: item.basePrice + item.extraDaysAmount + item.lateFeeAmount,
-  }));
+  const enrichedItems = items.map(item => {
+    const cancellationFeeAmount = item.cancellationFeeAmount || 0;
+    return {
+      ...item,
+      cancellationFeeAmount,
+      itemSubtotal: item.basePrice + item.extraDaysAmount + cancellationFeeAmount + item.lateFeeAmount,
+    };
+  });
 
   const subtotal = enrichedItems.reduce((sum, item) => sum + item.itemSubtotal, 0);
 

@@ -16,6 +16,7 @@ import { RescheduleReservationDialog } from "./RescheduleReservationDialog";
 import { SwapItemDialog } from "./SwapItemDialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { getCurrentDateGMT3 } from "../shared/utils/dateUtils";
+import { Alert, AlertDescription } from "./ui/alert";
 
 interface MyReservationsProps {
   reservations: Reservation[];
@@ -230,18 +231,22 @@ export const MyReservations = memo(function MyReservations({
       return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
     }, []);
 
+    const today = getCurrentDateGMT3();
+    const startDate = reservation.startDate || reservation.reservationDate;
+    const isOverdue = reservation.isOverdue ?? (!!startDate && startDate < today);
+
     const handleRentClick = useCallback(() => {
       if (isProcessing) return;
+      if (isOverdue) {
+        setRescheduleReservation(reservation);
+        return;
+      }
       setIsProcessing(true);
       timeoutRef.current = setTimeout(() => {
         setConvertRentalItemId(reservation.id);
         setIsProcessing(false);
       }, 400);
-    }, [isProcessing, reservation.id]);
-
-    const today = getCurrentDateGMT3();
-    const startDate = reservation.startDate || reservation.reservationDate;
-    const isOverdue = !!startDate && startDate < today;
+    }, [isProcessing, isOverdue, reservation]);
 
     return (
     <Card className="overflow-hidden hover:shadow-lg transition-shadow flex flex-col h-full">

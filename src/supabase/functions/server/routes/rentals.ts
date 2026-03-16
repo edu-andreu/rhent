@@ -1299,6 +1299,7 @@ app.post("/make-server-918f1e54/rental-items/:id/reschedule", async (c) => {
     const buenosAires = new Date(now.toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
     buenosAires.setHours(0, 0, 0, 0);
     const todayStr = buenosAires.toISOString().split('T')[0];
+    const isOverdue = item.start_date < todayStr;
 
     if (newStartDate <= todayStr) {
       return c.json({ error: "New start date must be in the future" }, 400);
@@ -1359,7 +1360,32 @@ app.post("/make-server-918f1e54/rental-items/:id/reschedule", async (c) => {
     const startD = new Date(newStartDate);
     const endD = new Date(newEndDate);
     const extraDaysCount = calculateExtraDays(startD, endD, rentalDays, holidays);
-    const extraDaysAmount = extraDaysCount > 0 ? Math.round(extraDaysCount * extraDayRate) : 0;
+    const extraDaysAmountBase = extraDaysCount > 0 ? Math.round(extraDaysCount * extraDayRate) : 0;
+
+    // Overdue reschedule fee: apply the configured cancellation fee as an extra charge
+    // Only applies when the reservation is overdue (past its start date in GMT-3).
+    let overdueRescheduleFeeAmount = 0;
+    if (isOverdue) {
+      const cancelFeePctRaw = await kv.get("config_cancelation_fee");
+      const cancellationFeePercent = parseFloat(cancelFeePctRaw as string || "25");
+
+      const { data: rentalForDiscount, error: rentalForDiscountError } = await supabase
+        .from("rentals")
+        .select("discount_percent")
+        .eq("id", item.rental_id)
+        .single();
+
+      if (rentalForDiscountError) {
+        console.log("Error fetching rental discount for overdue reschedule fee:", rentalForDiscountError);
+        return c.json({ error: `Failed to fetch rental data: ${rentalForDiscountError.message}` }, 500);
+      }
+
+      const discountPercent = parseFloat((rentalForDiscount as any)?.discount_percent) || 0;
+      const itemOrderTotal = oldUnitPrice * (1 - discountPercent / 100);
+      overdueRescheduleFeeAmount = Math.round(itemOrderTotal * (cancellationFeePercent / 100));
+    }
+
+    const extraDaysAmount = extraDaysAmountBase + overdueRescheduleFeeAmount;
 
     // 5. Update rental_items with separated price components (matching swap logic)
     const { error: updateError } = await supabase
@@ -1386,7 +1412,8 @@ app.post("/make-server-918f1e54/rental-items/:id/reschedule", async (c) => {
     // 6. Create audit record
     const itemName = item.inventory_items?.name?.name || "Unknown";
     const itemSku = item.inventory_items?.sku || "";
-    const notesText = `Rescheduled ${itemSku} ${itemName}. Old: ${oldStartDate} to ${oldEndDate} (${oldExtraDays} extra days), New: ${newStartDate} to ${newEndDate} (${extraDaysCount} extra days). Price: ${oldTotalPrice} -> ${newTotalPrice}`;
+    const feeNote = overdueRescheduleFeeAmount > 0 ? ` Includes overdue reschedule fee: ${overdueRescheduleFeeAmount}.` : "";
+    const notesText = `Rescheduled ${itemSku} ${itemName}. Old: ${oldStartDate} to ${oldEndDate} (${oldExtraDays} extra days), New: ${newStartDate} to ${newEndDate} (${extraDaysCount} extra days). Price: ${oldTotalPrice} -> ${newTotalPrice}.${feeNote}`;
 
     const { error: eventError } = await supabase
       .from("rental_events")
@@ -1415,6 +1442,8 @@ app.post("/make-server-918f1e54/rental-items/:id/reschedule", async (c) => {
       oldUnitPrice: oldTotalPrice,
       newUnitPrice: newTotalPrice,
       priceDifference: newTotalPrice - oldTotalPrice,
+      isOverdue,
+      overdueRescheduleFeeAmount,
     });
   } catch (error: any) {
     console.log("Error rescheduling reservation:", error);

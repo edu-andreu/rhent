@@ -140,7 +140,7 @@ export function registerReservationConversionRoutes(
       // Note: unit_price stores ONLY the base price (without extra days)
       const basePrice = parseFloat(item.unit_price) || 0;
       const extraDaysCount = item.extra_days || 0;
-      const extraDaysAmount = parseFloat(item.extra_days_amount) || 0;
+      const totalExtraDaysAmount = parseFloat(item.extra_days_amount) || 0;
       
       // Calculate day rates for the UI (in case user wants to edit)
       const startDate = new Date(item.start_date);
@@ -151,6 +151,29 @@ export function registerReservationConversionRoutes(
       const rentalPeriodDays = Math.max(1, Math.round(rentalPeriodMs / (1000 * 60 * 60 * 24)) + 1);
       const standardDayPrice = basePrice / configRentalDays;
       const extraDayRate = standardDayPrice * (extraDaysPricePct / 100);
+
+      // Derive overdue reschedule fee component (if any) from latest rescheduled event note
+      let overdueRescheduleFeeAmount = 0;
+      const { data: rescheduleEvents } = await supabase
+        .from("rental_events")
+        .select("notes")
+        .eq("rental_item_id", rentalItemId)
+        .eq("event_type", "rescheduled")
+        .order("event_time", { ascending: false })
+        .limit(1);
+
+      if (rescheduleEvents && rescheduleEvents.length > 0) {
+        const notes = (rescheduleEvents[0] as any).notes as string | undefined;
+        if (notes && notes.includes("overdue reschedule fee")) {
+          const match = notes.match(/overdue reschedule fee:\s*(\d+)/i);
+          if (match) {
+            overdueRescheduleFeeAmount = parseFloat(match[1]) || 0;
+          }
+        }
+      }
+
+      // Base extra-days amount excludes the overdue reschedule fee portion
+      const extraDaysAmount = Math.max(0, totalExtraDaysAmount - overdueRescheduleFeeAmount);
 
       // Calculate order context for multi-item orders
       // Instead of proportional allocation (which shows a fake "Already Paid"), we return
@@ -247,6 +270,7 @@ export function registerReservationConversionRoutes(
           extraDaysPricePct,
           rentalPeriodDays,
           basePrice,
+          overdueRescheduleFeeAmount,
         },
         orderItems: (allItems || []).map((oi: any) => {
           const oiPayments = (allItemPayments || []).filter((p: any) => p.rental_item_id === oi.id);

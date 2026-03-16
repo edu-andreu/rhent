@@ -102,6 +102,26 @@ export function ReservationCheckoutDialog({
                   hook.setTempExtraDaysValue(hook.originalExtraDaysCount.toString());
                   hook.setShowExtraDaysSection(true);
                 }}
+                cancellationFeeAmount={hook.cancellationFeeAmount}
+                originalCancellationFeeAmount={hook.originalCancellationFeeAmount}
+                showCancellationFeeSection={hook.showCancellationFeeSection}
+                tempCancellationFeeValue={hook.tempCancellationFeeValue}
+                onCancellationFeeTempValueChange={hook.setTempCancellationFeeValue}
+                onApplyCancellationFee={(amount) => {
+                  hook.setCancellationFeeOverride(amount);
+                  hook.setShowCancellationFeeSection(false);
+                }}
+                onRemoveCancellationFee={() => {
+                  hook.setCancellationFeeOverride(0);
+                  hook.setShowCancellationFeeSection(false);
+                }}
+                onEditCancellationFee={() => {
+                  hook.setTempCancellationFeeValue(hook.cancellationFeeAmount.toString());
+                  hook.setShowCancellationFeeSection(true);
+                }}
+                onCancelCancellationFeeEdit={() => {
+                  hook.setShowCancellationFeeSection(false);
+                }}
               />
 
               <Separator />

@@ -2,6 +2,7 @@ import { Sparkles, Calendar } from "lucide-react";
 import { Badge } from "../ui/badge";
 import { formatDateDisplay } from "../../shared/format/date";
 import { ReservationCheckoutExtraDaysSection } from "./ReservationCheckoutExtraDaysSection";
+import { ReservationCheckoutCancellationFeeSection } from "./ReservationCheckoutCancellationFeeSection";
 
 interface Item {
   name: string;
@@ -31,6 +32,17 @@ interface ReservationCheckoutItemDetailsProps {
   onApplyExtraDays: (days: number) => void;
   onCancelExtraDays: () => void;
   onEditExtraDays: () => void;
+
+  // Cancellation fee UI
+  cancellationFeeAmount: number;
+  originalCancellationFeeAmount: number;
+  showCancellationFeeSection: boolean;
+  tempCancellationFeeValue: string;
+  onCancellationFeeTempValueChange: (value: string) => void;
+  onApplyCancellationFee: (amount: number) => void;
+  onRemoveCancellationFee: () => void;
+  onEditCancellationFee: () => void;
+  onCancelCancellationFeeEdit: () => void;
 }
 
 export function ReservationCheckoutItemDetails({
@@ -48,11 +60,22 @@ export function ReservationCheckoutItemDetails({
   onApplyExtraDays,
   onCancelExtraDays,
   onEditExtraDays,
+  cancellationFeeAmount,
+  originalCancellationFeeAmount,
+  showCancellationFeeSection,
+  tempCancellationFeeValue,
+  onCancellationFeeTempValueChange,
+  onApplyCancellationFee,
+  onRemoveCancellationFee,
+  onEditCancellationFee,
+  onCancelCancellationFeeEdit,
 }: ReservationCheckoutItemDetailsProps) {
   const hasExtraDays = extraDaysCount > 0 && extraDaysAmount > 0;
+  const hasCancellationFee = cancellationFeeAmount > 0;
   const hasAnyExtraDaysUI =
     showExtraDaysSection || applicableExtraDays > 0 || extraDaysAmount > 0;
-  const itemTotal = item.unitPrice + (extraDaysAmount || 0);
+  const hasAnyChargesUI = hasAnyExtraDaysUI || hasCancellationFee || showCancellationFeeSection;
+  const itemTotal = item.unitPrice + (extraDaysAmount || 0) + (cancellationFeeAmount || 0);
 
   return (
     <div>
@@ -100,7 +123,7 @@ export function ReservationCheckoutItemDetails({
             </div>
           </div>
 
-          {hasAnyExtraDaysUI && (
+          {hasAnyChargesUI && (
             <div className="mt-2 pt-1.5 border-t space-y-1">
               <ReservationCheckoutExtraDaysSection
                 showExtraDaysSection={showExtraDaysSection}
@@ -118,7 +141,20 @@ export function ReservationCheckoutItemDetails({
                 onEdit={onEditExtraDays}
               />
 
-              {hasExtraDays && !showExtraDaysSection && (
+              <ReservationCheckoutCancellationFeeSection
+                showSection={showCancellationFeeSection}
+                cancellationFeeAmount={cancellationFeeAmount}
+                originalCancellationFeeAmount={originalCancellationFeeAmount}
+                tempValue={tempCancellationFeeValue}
+                formatCurrency={formatCurrency}
+                onTempValueChange={onCancellationFeeTempValueChange}
+                onApply={onApplyCancellationFee}
+                onRemove={onRemoveCancellationFee}
+                onEdit={onEditCancellationFee}
+                onCancel={onCancelCancellationFeeEdit}
+              />
+
+              {(hasExtraDays || hasCancellationFee) && !showExtraDaysSection && !showCancellationFeeSection && (
                 <div className="flex justify-between items-center pt-0.5">
                   <span className="text-[11px] font-semibold">Item Total</span>
                   <span className="text-sm font-bold">{formatCurrency(itemTotal)}</span>

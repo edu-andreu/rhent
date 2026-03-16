@@ -70,6 +70,7 @@ export interface Reservation {
   brand?: string;
   description?: string;
   alteration_notes?: string; // Notes about alterations or adjustments needed for fit
+  isOverdue?: boolean;
 }
 
 export interface PaymentMethod {

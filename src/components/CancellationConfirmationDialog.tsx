@@ -10,7 +10,7 @@ import {
 import { Button } from "./ui/button";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner@2.0.3";
-import { postFunction } from "../shared/api/client";
+import { postFunction, getFunction } from "../shared/api/client";
 import { handleApiError } from "../shared/utils/errorHandler";
 import { formatCurrencyARS } from "../shared/format/currency";
 
@@ -37,6 +37,7 @@ export function CancellationConfirmationDialog({
     creditAmount: number;
     itemStatus: string;
     itemCount: number;
+    isOverdue: boolean;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,6 +68,7 @@ export function CancellationConfirmationDialog({
           creditAmount: number;
           itemStatus: string;
           itemCount: number;
+          isOverdue: boolean;
         }>("calculate-cancellation", { rentalItemId }),
         getFunction<{ status: string; business_date: string }>("drawer/current"),
       ]);
@@ -122,6 +124,7 @@ export function CancellationConfirmationDialog({
               : creditIsNegative
               ? "A debt will be recorded on the customer's account."
               : "No credit or debt will be applied."}
+            {" A cancellation fee is applied according to your policy."}
           </DialogDescription>
         </DialogHeader>
 

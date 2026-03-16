@@ -18,6 +18,11 @@ vi.mock("../../config/env", () => {
   const url = "https://test.supabase.co/functions/v1/test-slug";
   const key = "test-anon-key";
   return {
+    supabase: {
+      auth: {
+        getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+      },
+    },
     supabaseConfig: {
       publicAnonKey: key,
       functionsBaseUrl: () => url,

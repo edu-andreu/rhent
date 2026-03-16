@@ -65,6 +65,13 @@ const defaultHookReturn = {
   showDrawerAlert: false,
   drawerAlertMessage: "",
   setShowDrawerAlert: vi.fn(),
+  cancellationFeeAmount: 0,
+  originalCancellationFeeAmount: 0,
+  showCancellationFeeSection: false,
+  setShowCancellationFeeSection: vi.fn(),
+  tempCancellationFeeValue: "",
+  setTempCancellationFeeValue: vi.fn(),
+  setCancellationFeeOverride: vi.fn(),
   orderItems: [],
   currentRentalItemId: "",
 };
