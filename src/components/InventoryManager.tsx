@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Plus, Pencil, Trash2, Package, Search, Filter } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "./ui/card";
@@ -23,12 +23,14 @@ export function InventoryManager({ dresses, onEdit, onDelete, onAddNew }: Invent
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [dressToDelete, setDressToDelete] = useState<Dress | null>(null);
 
-  const categories = ['all', ...Array.from(new Set(dresses.map(d => d.category)))];
+  const categories = useMemo(
+    () => ['all', ...Array.from(new Set(dresses.map(d => d.category)))],
+    [dresses],
+  );
 
-  // Helper to strip accents for accent-insensitive search
   const removeAccents = (str: string) => str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-  const filteredDresses = dresses.filter(dress => {
+  const filteredDresses = useMemo(() => dresses.filter(dress => {
     const normalizedQuery = removeAccents(searchQuery.toLowerCase());
     const matchesSearch = removeAccents(dress.name.toLowerCase()).includes(normalizedQuery) ||
                          removeAccents(dress.description.toLowerCase()).includes(normalizedQuery) ||
@@ -39,7 +41,7 @@ export function InventoryManager({ dresses, onEdit, onDelete, onAddNew }: Invent
                                (availabilityFilter === 'unavailable' && !dress.available);
     
     return matchesSearch && matchesCategory && matchesAvailability;
-  });
+  }), [dresses, searchQuery, categoryFilter, availabilityFilter]);
 
   const handleDeleteClick = (dress: Dress) => {
     setDressToDelete(dress);
@@ -54,11 +56,11 @@ export function InventoryManager({ dresses, onEdit, onDelete, onAddNew }: Invent
     }
   };
 
-  const stats = {
+  const stats = useMemo(() => ({
     total: dresses.length,
     available: dresses.filter(d => d.available).length,
     rented: dresses.filter(d => !d.available).length,
-  };
+  }), [dresses]);
 
   return (
     <div className="space-y-6">

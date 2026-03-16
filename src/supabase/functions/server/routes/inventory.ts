@@ -3,6 +3,7 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js";
 import { getCurrentUserDisplay } from "../helpers/auth.ts";
 import * as kv from "../kv_store.ts";
 import { roundToNearestThousand } from "../priceUtils.ts";
+import { batchResolveImageUrls } from "../helpers/images.ts";
 
 export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
 
@@ -51,42 +52,28 @@ export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
         return c.json({ dresses: [] });
       }
 
-      const { data: rentalItemRows, error: rentalCountError } = await supabase
-        .from("rental_items")
-        .select("item_id")
-        .in("status", ["reserved", "checked_out", "returned", "completed"]);
-
       const rentalCountMap: Record<string, number> = {};
-      if (!rentalCountError && rentalItemRows) {
-        for (const row of rentalItemRows) {
-          if (row.item_id) {
-            rentalCountMap[row.item_id] = (rentalCountMap[row.item_id] || 0) + 1;
-          }
+      const { data: rentalCounts, error: rentalCountError } = await supabase
+        .rpc("get_rental_counts");
+
+      if (!rentalCountError && rentalCounts) {
+        for (const row of rentalCounts) {
+          rentalCountMap[row.item_id] = Number(row.rental_count);
         }
       } else if (rentalCountError) {
         console.log("Warning: Could not fetch rental counts for popularity sorting:", rentalCountError.message);
       }
 
       const checkedOutItemIds = await getCheckedOutItemIds();
-      const bucketName = 'photos';
 
-      const dresses = await Promise.all(items.map(async (item) => {
+      const itemIds = items.map((item) => item.id);
+      const categoryDefaults = new Map(
+        items.map((item) => [item.id, item.category?.default_image || ""])
+      );
+      const imageUrlMap = await batchResolveImageUrls(supabase, itemIds, categoryDefaults);
+
+      const dresses = items.map((item) => {
         const isCheckedOut = checkedOutItemIds.has(item.id);
-        let imageUrl = "";
-        const { data: files } = await supabase.storage
-          .from(bucketName)
-          .list('', { search: item.id });
-
-        if (files && files.length > 0) {
-          const { data: signedUrlData } = await supabase.storage
-            .from(bucketName)
-            .createSignedUrl(files[0].name, 31536000);
-          if (signedUrlData) {
-            imageUrl = signedUrlData.signedUrl;
-          }
-        } else if (item.category?.default_image && item.category.default_image.trim() !== "") {
-          imageUrl = `${supabaseUrl}/storage/v1/object/public/photos/${item.category.default_image}`;
-        }
 
         const colors = item.inventory_item_colors && item.inventory_item_colors.length > 0
           ? item.inventory_item_colors.map(ic => ic.color?.color).filter(Boolean)
@@ -100,7 +87,7 @@ export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
           size: item.size?.size || "",
           colors: colors,
           pricePerDay: parseFloat(item.curr_price) || 0,
-          imageUrl: imageUrl,
+          imageUrl: imageUrlMap.get(item.id) || "",
           category: item.category?.category || "",
           categoryType: item.category?.category?.toLowerCase() === 'extras' ? 'service' : 'product',
           type: item.subcategory?.subcategory || "",
@@ -117,7 +104,7 @@ export function registerInventoryRoutes(app: Hono, supabase: SupabaseClient) {
           isStockTracked: item.is_stock_tracked || false,
           lowStockThreshold: item.low_stock_threshold ?? 5,
         };
-      }));
+      });
 
       dresses.sort((a, b) => b.rentalCount - a.rentalCount);
 

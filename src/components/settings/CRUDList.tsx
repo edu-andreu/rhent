@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -57,10 +57,10 @@ export function CRUDList({
   const [editItem, setEditItem] = useState<ListItem | null>(null);
   const [deleteItem, setDeleteItem] = useState<ListItem | null>(null);
 
-  const filteredItems = items.filter((item) => {
+  const filteredItems = useMemo(() => items.filter((item) => {
     if (filterItem && !filterItem(item)) return false;
     return item.value.toLowerCase().includes(searchTerm.toLowerCase());
-  });
+  }), [items, searchTerm, filterItem]);
 
   const handleSaveAdd = async () => {
     if (!addValue.trim()) return;

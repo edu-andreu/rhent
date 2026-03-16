@@ -4,6 +4,7 @@ import { getCurrentUserDisplay } from "../helpers/auth.ts";
 import * as kv from "../kv_store.ts";
 import { countBusinessDays, fetchHolidaysFromAPI, calculateExtraDays, getGMT3DateString } from "../helpers/calculations.ts";
 import { getCurrentOpenDrawer, validateDateNotWeekendOrHoliday } from "../helpers/validation.ts";
+import { batchResolveImageUrls } from "../helpers/images.ts";
 
 export function registerRentalsRoutes(app: Hono, supabase: SupabaseClient) {
 
@@ -69,45 +70,28 @@ app.get("/make-server-918f1e54/rentals/active", async (c) => {
       return c.json({ error: `Failed to fetch active rentals: ${error.message}` }, 500);
     }
 
-    // Transform data to match frontend Rental interface
-    const bucketName = 'photos';
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    
-    const rentals = await Promise.all((data || []).map(async (item: any) => {
+    const items = data || [];
+    const itemIds = items.map((item: any) => item.item_id).filter(Boolean);
+    const categoryDefaults = new Map(
+      items.map((item: any) => [item.item_id, item.inventory_items?.category?.default_image || ""])
+    );
+    const imageUrlMap = await batchResolveImageUrls(supabase, itemIds, categoryDefaults);
+
+    const rentals = items.map((item: any) => {
       const itemName = item.inventory_items?.name?.name || "Unknown";
       const customer = item.rentals?.customers;
       const customerName = customer
         ? `${customer.first_name || ""} ${customer.last_name || ""}`.trim()
         : "Unknown";
-      
-      // Extract colors
       const colors = item.inventory_items?.inventory_item_colors?.map((ic: any) => ic.color?.color).filter(Boolean) || [];
 
-      // Get image from storage
-      let imageUrl = "";
-      const { data: files } = await supabase.storage
-        .from(bucketName)
-        .list('', { search: item.item_id });
-      
-      if (files && files.length > 0) {
-        const { data: signedUrlData } = await supabase.storage
-          .from(bucketName)
-          .createSignedUrl(files[0].name, 31536000); // 1 year
-        
-        if (signedUrlData) {
-          imageUrl = signedUrlData.signedUrl;
-        }
-      } else if (item.inventory_items?.category?.default_image) {
-        imageUrl = `${supabaseUrl}/storage/v1/object/public/photos/${item.inventory_items.category.default_image}`;
-      }
-      
       return {
         id: item.id,
         dressId: item.item_id,
         dressName: itemName,
-        dressImage: imageUrl,
-        startDate: item.start_date, // Keep as YYYY-MM-DD string, frontend will parse with parseDateLocal
-        endDate: item.end_date, // Keep as YYYY-MM-DD string, frontend will parse with parseDateLocal
+        dressImage: imageUrlMap.get(item.item_id) || "",
+        startDate: item.start_date,
+        endDate: item.end_date,
         totalCost: item.unit_price,
         status: 'active',
         rentalId: item.rental_id,
@@ -123,7 +107,7 @@ app.get("/make-server-918f1e54/rentals/active", async (c) => {
         pricePerDay: parseFloat(item.inventory_items?.curr_price) || 0,
         alteration_notes: item.alteration_notes || "",
       };
-    }));
+    });
 
     return c.json({ rentals });
   } catch (error) {
@@ -1501,54 +1485,38 @@ app.get("/make-server-918f1e54/available-items-for-dates", async (c) => {
     const bookedItemIds = new Set((bookings || []).map((b: any) => b.item_id));
 
     // 4. Filter to available items and transform
-    const supabaseUrlEnv = Deno.env.get("SUPABASE_URL");
-    const bucketName = "photos";
+    const filteredItems = (allItems || []).filter((itm: any) => {
+      if (excludeItemId && itm.id === excludeItemId) return false;
+      if (bookedItemIds.has(itm.id)) return false;
+      return true;
+    });
 
-    const availableItems = await Promise.all(
-      (allItems || [])
-        .filter((itm: any) => {
-          if (excludeItemId && itm.id === excludeItemId) return false;
-          if (bookedItemIds.has(itm.id)) return false;
-          return true;
-        })
-        .map(async (itm: any) => {
-          let imageUrl = "";
-          const { data: files } = await supabase.storage
-            .from(bucketName)
-            .list("", { search: itm.id });
-
-          if (files && files.length > 0) {
-            const { data: signedUrlData } = await supabase.storage
-              .from(bucketName)
-              .createSignedUrl(files[0].name, 31536000);
-            if (signedUrlData) {
-              imageUrl = signedUrlData.signedUrl;
-            }
-          } else if (itm.category?.default_image) {
-            imageUrl = `${supabaseUrlEnv}/storage/v1/object/public/photos/${itm.category.default_image}`;
-          }
-
-          const colors = itm.inventory_item_colors?.map((ic: any) => ic.color?.color).filter(Boolean) || [];
-
-          return {
-            id: itm.id,
-            name: itm.name?.name || itm.sku || "Unnamed",
-            sku: itm.sku,
-            description: itm.description || "",
-            size: itm.size?.size || "",
-            colors,
-            pricePerDay: parseFloat(itm.curr_price) || 0,
-            imageUrl,
-            category: itm.category?.category || "",
-            type: itm.subcategory?.subcategory || "",
-            brand: itm.brand?.brand || "",
-            available: true,
-            status: itm.location?.location || "",
-            statusBadgeClass: itm.location?.badge_class || "text-bg-light",
-            availabilityStatus: itm.location?.availability_status || "",
-          };
-        })
+    const filteredIds = filteredItems.map((itm: any) => itm.id);
+    const filteredCategoryDefaults = new Map(
+      filteredItems.map((itm: any) => [itm.id, itm.category?.default_image || ""])
     );
+    const imageUrlMap = await batchResolveImageUrls(supabase, filteredIds, filteredCategoryDefaults);
+
+    const availableItems = filteredItems.map((itm: any) => {
+      const colors = itm.inventory_item_colors?.map((ic: any) => ic.color?.color).filter(Boolean) || [];
+      return {
+        id: itm.id,
+        name: itm.name?.name || itm.sku || "Unnamed",
+        sku: itm.sku,
+        description: itm.description || "",
+        size: itm.size?.size || "",
+        colors,
+        pricePerDay: parseFloat(itm.curr_price) || 0,
+        imageUrl: imageUrlMap.get(itm.id) || "",
+        category: itm.category?.category || "",
+        type: itm.subcategory?.subcategory || "",
+        brand: itm.brand?.brand || "",
+        available: true,
+        status: itm.location?.location || "",
+        statusBadgeClass: itm.location?.badge_class || "text-bg-light",
+        availabilityStatus: itm.location?.availability_status || "",
+      };
+    });
 
     console.log(`Found ${availableItems.length} available items for dates ${startDate}-${endDate}`);
     return c.json({ items: availableItems });

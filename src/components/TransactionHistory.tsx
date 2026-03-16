@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Receipt, Search, Filter, Download, ChevronRight } from "lucide-react";
 import { Card, CardContent } from "./ui/card";
 import { Input } from "./ui/input";
@@ -20,33 +20,32 @@ export function TransactionHistory({ transactions }: TransactionHistoryProps) {
   const [sortBy, setSortBy] = useState<string>("date-desc");
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
 
-  // Filter transactions
-  let filteredTransactions = transactions.filter(t => {
-    const matchesSearch = t.itemName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          t.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = filterStatus === "all" || t.status === filterStatus;
-    const matchesType = filterType === "all" || t.type === filterType;
-    
-    return matchesSearch && matchesStatus && matchesType;
-  });
+  const filteredTransactions = useMemo(() => {
+    const filtered = transactions.filter(t => {
+      const matchesSearch = t.itemName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            t.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus = filterStatus === "all" || t.status === filterStatus;
+      const matchesType = filterType === "all" || t.type === filterType;
+      return matchesSearch && matchesStatus && matchesType;
+    });
 
-  // Sort transactions
-  filteredTransactions.sort((a, b) => {
-    switch (sortBy) {
-      case "date-desc":
-        return b.date.getTime() - a.date.getTime();
-      case "date-asc":
-        return a.date.getTime() - b.date.getTime();
-      case "amount-desc":
-        return b.amount - a.amount;
-      case "amount-asc":
-        return a.amount - b.amount;
-      default:
-        return 0;
-    }
-  });
+    return [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case "date-desc":
+          return b.date.getTime() - a.date.getTime();
+        case "date-asc":
+          return a.date.getTime() - b.date.getTime();
+        case "amount-desc":
+          return b.amount - a.amount;
+        case "amount-asc":
+          return a.amount - b.amount;
+        default:
+          return 0;
+      }
+    });
+  }, [transactions, searchQuery, filterStatus, filterType, sortBy]);
 
-  const getStatusBadge = (status: Transaction['status']) => {
+  const getStatusBadge = useCallback((status: Transaction['status']) => {
     const variants: Record<Transaction['status'], any> = {
       completed: 'default',
       pending: 'secondary',
@@ -54,9 +53,9 @@ export function TransactionHistory({ transactions }: TransactionHistoryProps) {
       refunded: 'outline',
     };
     return <Badge variant={variants[status]}>{status}</Badge>;
-  };
+  }, []);
 
-  const getTypeBadge = (type: Transaction['type']) => {
+  const getTypeBadge = useCallback((type: Transaction['type']) => {
     const colors: Record<Transaction['type'], string> = {
       rental: 'bg-blue-500/10 text-blue-500',
       reservation: 'bg-purple-500/10 text-purple-500',
@@ -68,7 +67,7 @@ export function TransactionHistory({ transactions }: TransactionHistoryProps) {
         {type.replace('_', ' ')}
       </Badge>
     );
-  };
+  }, []);
 
   const downloadReceipt = (transaction: Transaction) => {
     // Mock receipt download

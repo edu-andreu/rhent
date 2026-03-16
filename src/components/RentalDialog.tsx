@@ -81,7 +81,6 @@ export function RentalDialog({ dress, open, onClose, onConfirm }: RentalDialogPr
       extraDaysPrice,
       holidays
     );
-    await new Promise(resolve => setTimeout(resolve, 2000));
     setIsSubmitting(false);
     onConfirm(booking.startDate, booking.endDate, currentPricing.extraDays, currentPricing.total, currentPricing.standardPrice, currentPricing.extraDaysTotal);
     booking.resetDates();

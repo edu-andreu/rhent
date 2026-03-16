@@ -336,8 +336,6 @@ export function useCheckoutDialog({
     });
 
     setProcessing(true);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setProcessing(false);
 
     const discount = discountValue > 0 ? {
       type: discountType,
@@ -357,6 +355,7 @@ export function useCheckoutDialog({
     });
 
     onConfirm(payments, discount, selectedCustomer.id, updatedCart, creditApplied !== 0 ? creditApplied : undefined);
+    setProcessing(false);
     setPaymentAllocations([]);
     setDiscountValue(0);
     setDiscountReason('');

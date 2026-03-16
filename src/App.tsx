@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useCallback } from "react";
 import { AppHeader } from "./components/AppHeader";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Toaster } from "sonner";
@@ -13,9 +13,10 @@ import { useRentals } from "./features/rentals/useRentals";
 import { useReservations } from "./features/reservations/useReservations";
 import { useReservationActions } from "./features/reservations/useReservationActions";
 
+const IS_DEBUG_MODE = new URLSearchParams(window.location.search).get("debug") === "true";
+
 function AppContent() {
   const { activeTab, setActiveTab, mobileMenuOpen, setMobileMenuOpen } = useAppState();
-  const isDebugMode = new URLSearchParams(window.location.search).get("debug") === "true";
 
   const catalog = useCatalog();
   const {
@@ -44,42 +45,43 @@ function AppContent() {
   const reservationsHook = useReservations();
   const { reservations, setReservations, loadReservations } = reservationsHook;
 
+  const reloadAll = useCallback(async () => {
+    await Promise.all([loadDresses(), loadRentals(), loadReservations(), loadCustomers()]);
+  }, [loadDresses, loadRentals, loadReservations, loadCustomers]);
+
   const reservationActions = useReservationActions({
     reservations,
     setReservations,
-    onConvertToRental: async () => {
-      await Promise.all([loadRentals(), loadDresses(), loadReservations(), loadCustomers()]);
-    },
+    onConvertToRental: reloadAll,
   });
 
   useEffect(() => {
-    loadRentals();
-    loadReservations();
+    Promise.all([loadRentals(), loadReservations()]);
   }, []);
 
-  const handleDeleteCustomer = async (customerId: string) => {
+  const handleDeleteCustomer = useCallback(async (customerId: string) => {
     await apiDeleteCustomer(customerId);
-  };
+  }, [apiDeleteCustomer]);
+
+  const handleCustomerAdded = useCallback(async (customer: any) => {
+    await apiAddCustomer(customer);
+    return true;
+  }, [apiAddCustomer]);
+
+  const handleCustomerUpdated = useCallback(async (customerId: string, customer: any) => {
+    await apiUpdateCustomer(customerId, customer);
+    return true;
+  }, [apiUpdateCustomer]);
 
   return (
     <DialogProvider
       customers={customers}
-      onPaymentSuccess={async () => {
-        await Promise.all([loadDresses(), loadRentals(), loadReservations(), loadCustomers()]);
-      }}
+      onPaymentSuccess={reloadAll}
       onDressAdded={loadDresses}
       onDressDeleted={deleteDress}
-      onCustomerAdded={async (customer) => {
-        await apiAddCustomer(customer);
-        return true;
-      }}
-      onCustomerUpdated={async (customerId, customer) => {
-        await apiUpdateCustomer(customerId, customer);
-        return true;
-      }}
-      onReturnComplete={async () => {
-        await Promise.all([loadRentals(), loadDresses(), loadReservations(), loadCustomers()]);
-      }}
+      onCustomerAdded={handleCustomerAdded}
+      onCustomerUpdated={handleCustomerUpdated}
+      onReturnComplete={reloadAll}
     >
       <AppInner
         dresses={dresses}
@@ -131,7 +133,6 @@ function AppInner({
   handleDeleteCustomer,
 }: AppInnerProps) {
   const { activeTab, setActiveTab, mobileMenuOpen, setMobileMenuOpen } = useAppState();
-  const isDebugMode = new URLSearchParams(window.location.search).get("debug") === "true";
   const dialog = useDialog();
 
   return (
@@ -171,7 +172,7 @@ function AppInner({
             onEdit={dialog.handleEditCustomer}
             onDelete={handleDeleteCustomer}
             onAddNew={dialog.handleAddNewCustomer}
-            isDebugMode={isDebugMode}
+            isDebugMode={IS_DEBUG_MODE}
           />
         </div>
       </main>

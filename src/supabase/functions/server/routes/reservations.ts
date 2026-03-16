@@ -2,6 +2,7 @@ import type { Hono } from "npm:hono";
 import type { SupabaseClient } from "npm:@supabase/supabase-js";
 import { getCurrentUserDisplay } from "../helpers/auth.ts";
 import * as kv from "../kv_store.ts";
+import { batchResolveImageUrls } from "../helpers/images.ts";
 
 export function registerReservationsRoutes(app: Hono, supabase: SupabaseClient) {
 
@@ -151,11 +152,13 @@ app.get("/make-server-918f1e54/reservations/active", async (c) => {
     // Filter out auto-cancelled items from the response
     const activeItems = (data || []).filter((item: any) => !autoCancelledIds.has(item.id));
 
-    // Transform data to match frontend Reservation interface
-    const bucketName = 'photos';
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    
-    const reservations = await Promise.all(activeItems.map(async (item: any) => {
+    const activeItemIds = activeItems.map((item: any) => item.item_id).filter(Boolean);
+    const categoryDefaults = new Map(
+      activeItems.map((item: any) => [item.item_id, item.inventory_items?.category?.default_image || ""])
+    );
+    const imageUrlMap = await batchResolveImageUrls(supabase, activeItemIds, categoryDefaults);
+
+    const reservations = activeItems.map((item: any) => {
       const itemName = item.inventory_items?.name?.name || "Unknown";
       const size = item.inventory_items?.size?.size || "";
       const colors = item.inventory_items?.inventory_item_colors?.map((ic: any) => ic.color?.color).filter(Boolean) || [];
@@ -163,42 +166,23 @@ app.get("/make-server-918f1e54/reservations/active", async (c) => {
       const customerName = customer
         ? `${customer.first_name || ""} ${customer.last_name || ""}`.trim()
         : "Unknown";
-      
-      // Get image from storage
-      let imageUrl = "";
-      const { data: files } = await supabase.storage
-        .from(bucketName)
-        .list('', { search: item.item_id });
-      
-      if (files && files.length > 0) {
-        const { data: signedUrlData } = await supabase.storage
-          .from(bucketName)
-          .createSignedUrl(files[0].name, 31536000); // 1 year
-        
-        if (signedUrlData) {
-          imageUrl = signedUrlData.signedUrl;
-        }
-      } else if (item.inventory_items?.category?.default_image) {
-        imageUrl = `${supabaseUrl}/storage/v1/object/public/photos/${item.inventory_items.category.default_image}`;
-      }
-      
       const isOverdue = item.start_date < todayStr;
 
       return {
         id: item.id,
         dressId: item.item_id,
         dressName: itemName,
-        dressImage: imageUrl,
+        dressImage: imageUrlMap.get(item.item_id) || "",
         dressSize: size,
         dressColors: colors,
         dressPricePerDay: parseFloat(item.inventory_items?.curr_price) || 0,
-        reservationDate: item.start_date, // Keep as YYYY-MM-DD string, frontend will parse with parseDateLocal
+        reservationDate: item.start_date,
         status: 'pending',
-        createdAt: item.created_at, // Keep as string, frontend will parse
+        createdAt: item.created_at,
         rentalId: item.rental_id,
         customerId: item.rentals?.customer_id || "",
-        startDate: item.start_date, // Keep as YYYY-MM-DD string, frontend will parse with parseDateLocal
-        endDate: item.end_date, // Keep as YYYY-MM-DD string, frontend will parse with parseDateLocal
+        startDate: item.start_date,
+        endDate: item.end_date,
         customerName: customerName,
         sku: item.inventory_items?.sku || "",
         category: item.inventory_items?.category?.category || "",
@@ -208,7 +192,7 @@ app.get("/make-server-918f1e54/reservations/active", async (c) => {
         alteration_notes: item.alteration_notes || "",
         isOverdue,
       };
-    }));
+    });
 
     return c.json({ reservations });
   } catch (error) {

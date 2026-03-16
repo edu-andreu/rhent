@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Plus, Pencil, Trash2, Search, Loader2, ChevronsUpDown } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -173,15 +173,18 @@ export function SuppliersList() {
     fetchSuppliers();
   }, [fetchSuppliers]);
 
-  const uniqueCategoryValues = [...new Set(suppliers.map((s) => s.category).filter(Boolean))].sort();
+  const uniqueCategoryValues = useMemo(
+    () => [...new Set(suppliers.map((s) => s.category).filter(Boolean))].sort(),
+    [suppliers],
+  );
 
-  const filteredSuppliers = suppliers.filter((s) => {
+  const filteredSuppliers = useMemo(() => suppliers.filter((s) => {
     const term = searchTerm.toLowerCase();
     return (
       (s.name || "").toLowerCase().includes(term) ||
       (s.category || "").toLowerCase().includes(term)
     );
-  });
+  }), [suppliers, searchTerm]);
 
   const handleOpenAdd = () => {
     setAddName("");

@@ -95,9 +95,7 @@ export function useCatalog() {
   };
 
   useEffect(() => {
-    loadDresses();
-    loadCatalogConfig();
-    repairCorruptedItems();
+    Promise.all([loadDresses(), loadCatalogConfig()]);
   }, []);
 
   return {

@@ -5,6 +5,7 @@ import * as kv from "../kv_store.ts";
 import { getCurrentOpenDrawer } from "../helpers/validation.ts";
 import { getGMT3DateString } from "../helpers/calculations.ts";
 import { allocatePaymentToItems } from "../helpers/paymentAllocation.ts";
+import { batchResolveImageUrls } from "../helpers/images.ts";
 
 export function registerCheckoutRoutes(
   app: Hono,
@@ -630,23 +631,13 @@ app.get("/make-server-918f1e54/sale-items", async (c) => {
       return true; // Services are always available
     });
 
-    // Map to frontend format
-    const items = await Promise.all(availableItems.map(async (item: any) => {
-      // Image URL
-      const bucketName = 'photos';
-      let imageUrl = "";
-      const { data: files } = await supabase.storage
-        .from(bucketName)
-        .list('', { search: item.id });
-      if (files && files.length > 0) {
-        const { data: signedUrlData } = await supabase.storage
-          .from(bucketName)
-          .createSignedUrl(files[0].name, 31536000);
-        if (signedUrlData) imageUrl = signedUrlData.signedUrl;
-      } else if (item.category?.default_image && item.category.default_image.trim() !== "") {
-        imageUrl = `${supabaseUrl}/storage/v1/object/public/photos/${item.category.default_image}`;
-      }
+    const saleItemIds = availableItems.map((item: any) => item.id);
+    const saleCategoryDefaults = new Map(
+      availableItems.map((item: any) => [item.id, item.category?.default_image || ""])
+    );
+    const imageUrlMap = await batchResolveImageUrls(supabase, saleItemIds, saleCategoryDefaults);
 
+    const items = availableItems.map((item: any) => {
       const colors = item.inventory_item_colors && item.inventory_item_colors.length > 0
         ? item.inventory_item_colors.map((ic: any) => ic.color?.color).filter(Boolean)
         : [item.color?.color].filter(Boolean);
@@ -658,7 +649,7 @@ app.get("/make-server-918f1e54/sale-items", async (c) => {
         description: item.description || "",
         size: item.size?.size || "",
         colors: colors,
-        imageUrl: imageUrl,
+        imageUrl: imageUrlMap.get(item.id) || "",
         category: item.category?.category || "",
         categoryType: item.category?.category?.toLowerCase() === 'extras' ? 'service' : 'product',
         type: item.subcategory?.subcategory || "",
@@ -672,7 +663,7 @@ app.get("/make-server-918f1e54/sale-items", async (c) => {
         statusBadgeClass: item.location?.badge_class || "text-bg-light",
         availabilityStatus: item.location?.availability_status || "",
       };
-    }));
+    });
 
     return c.json({ items });
   } catch (error: any) {
