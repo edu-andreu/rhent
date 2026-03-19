@@ -74,6 +74,7 @@ export function useAddDressForm({ open, editDress, onAdd, onClose }: UseAddDress
   }, [open]);
 
   useEffect(() => {
+    if (editDress) return; // In edit mode, preserve the item's existing image
     if (formData.categoryId && categories.length > 0) {
       const isCurrentImageCategoryDefault = imagePreview && imagePreview.includes("/storage/v1/object/public/photos/");
       const hasCustomImageInSession = pendingImageFile.current !== null;
@@ -438,17 +439,25 @@ export function useAddDressForm({ open, editDress, onAdd, onClose }: UseAddDress
   };
 
   const removeImage = () => {
+    const hasPendingBlob = pendingImageFile.current !== null;
     if (imagePreview.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
     pendingImageFile.current = null;
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
-    const selectedCategory = categories.find((c) => c.id === formData.categoryId);
-    if (selectedCategory?.default_image) {
-      const defaultImageUrl = buildStorageUrl("photos", selectedCategory.default_image);
-      setImagePreview(defaultImageUrl);
-      setFormData((prev) => ({ ...prev, imageUrl: "" }));
+    if (hasPendingBlob) {
+      // User is removing a newly uploaded image → restore to category default
+      const selectedCategory = categories.find((c) => c.id === formData.categoryId);
+      if (selectedCategory?.default_image) {
+        const defaultImageUrl = buildStorageUrl("photos", selectedCategory.default_image);
+        setImagePreview(defaultImageUrl);
+        setFormData((prev) => ({ ...prev, imageUrl: "" }));
+      } else {
+        setImagePreview("");
+        setFormData((prev) => ({ ...prev, imageUrl: "" }));
+      }
     } else {
+      // User is removing an existing server image → clear to show upload UI
       setImagePreview("");
       setFormData((prev) => ({ ...prev, imageUrl: "" }));
     }
