@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Separator } from '../ui/separator';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { format } from 'date-fns';
+import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { formatCurrencyARS } from '../../shared/format/currency';
 import { postFunction, deleteFunction } from '../../shared/api/client';
 import { handleApiError } from '../../shared/utils/errorHandler';
@@ -394,9 +395,10 @@ export function MoneyTab({ metrics, filterLabel, owners, paymentMethods, onDistr
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
-                                <div className="flex items-center justify-center w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 text-xs font-medium shrink-0">
-                                  {(od.owner_name || '?').charAt(0)}
-                                </div>
+                                <Avatar className="size-7 shrink-0">
+                                  <AvatarImage src={owners.find(o => o.id === od.owner_id)?.avatar_url ?? undefined} alt={od.owner_name ?? 'Owner'} referrerPolicy="no-referrer" />
+                                  <AvatarFallback className="text-xs">{(od.owner_name || '?').charAt(0)}</AvatarFallback>
+                                </Avatar>
                                 <span className="text-sm font-medium">{od.owner_name || 'Unknown'}</span>
                               </div>
                             </TableCell>
@@ -452,9 +454,10 @@ export function MoneyTab({ metrics, filterLabel, owners, paymentMethods, onDistr
                             <TableRow key={owner.id}>
                               <TableCell>
                                 <div className="flex items-center gap-2">
-                                  <div className="flex items-center justify-center w-7 h-7 rounded-full bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 text-xs font-medium shrink-0">
-                                    {(owner.full_name || '?').charAt(0)}
-                                  </div>
+                                  <Avatar className="size-7 shrink-0">
+                                    <AvatarImage src={owner.avatar_url ?? undefined} alt={owner.full_name ?? 'Owner'} referrerPolicy="no-referrer" />
+                                    <AvatarFallback className="text-xs">{(owner.full_name || '?').charAt(0)}</AvatarFallback>
+                                  </Avatar>
                                   <span className="text-sm font-medium">{owner.full_name || 'Unknown'}</span>
                                 </div>
                               </TableCell>
