@@ -68,8 +68,8 @@ export function AddCustomerDialog({ open, onClose, onAdd, editCustomer }: AddCus
           <DialogTitle id="customer-dialog-title">{editCustomer ? "Edit Customer" : "Add New Customer"}</DialogTitle>
           <DialogDescription id="customer-dialog-description">
             {editCustomer 
-              ? "Update the customer information below. All required fields are marked with an asterisk (*)." 
-              : "Enter the customer details to add them to your database. All required fields are marked with an asterisk (*)."}
+              ? "Update the customer information below. Required fields are marked with an asterisk (*)."
+              : "Enter the customer details to add them to your database. Required fields are marked with an asterisk (*)."}
           </DialogDescription>
         </DialogHeader>
 
@@ -115,15 +115,13 @@ export function AddCustomerDialog({ open, onClose, onAdd, editCustomer }: AddCus
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email *</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="john.doe@example.com"
-                required
-                aria-required="true"
               />
             </div>
           </div>
