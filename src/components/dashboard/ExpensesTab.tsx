@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { TrendingDown, Receipt, Plus, DollarSign, Trash2 } from 'lucide-react';
+import { TrendingDown, Receipt, Plus, DollarSign, Trash2, Users, LogIn, LogOut } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -18,9 +18,12 @@ import { toast } from 'sonner@2.0.3';
 import type { DashboardMetrics } from './useDashboardMetrics';
 import type { DashboardPaymentMethod } from '../../features/dashboard/useDashboardData';
 import { CategoryCombobox } from '../cash-drawer/CategoryCombobox';
+import { formatCurrency } from '../cash-drawer/useCashDrawer';
 import type { TransactionCategory } from '../cash-drawer/useCashDrawer';
 import { AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '../ui/alert-dialog';
 import type { CashTransaction } from '../../types';
+import { TimePicker } from '../cash-drawer/TimePicker';
+import { useAuth } from '../../providers/AuthProvider';
 
 const TOOLTIP_STYLE = { background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))' };
 
@@ -32,6 +35,7 @@ interface ExpensesTabProps {
 }
 
 export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdded }: ExpensesTabProps) {
+  const { appUser } = useAuth();
   const [showAddExpenseDialog, setShowAddExpenseDialog] = useState(false);
   const [expenseDate, setExpenseDate] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
   const [amount, setAmount] = useState('');
@@ -44,6 +48,19 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
   const prevDialogOpenRef = useRef(false);
   const [deletingTransaction, setDeletingTransaction] = useState<CashTransaction | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Expense type toggle
+  const [expenseType, setExpenseType] = useState<'expense' | 'payroll'>('expense');
+
+  // Payroll state
+  const [payrollSchedule, setPayrollSchedule] = useState<'daily' | 'weekly'>('daily');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
+  const [employeeName, setEmployeeName] = useState('');
+  const [shiftStart, setShiftStart] = useState('');
+  const [shiftEnd, setShiftEnd] = useState('');
+  const [weeklyHours, setWeeklyHours] = useState('');
+  const [employees, setEmployees] = useState<{ id: string; full_name: string | null; email: string }[]>([]);
+  const [hourlyRate, setHourlyRate] = useState(5000);
 
   const fetchCategories = useCallback(async () => {
     setCategoriesLoading(true);
@@ -58,13 +75,44 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
     }
   }, []);
 
+  const fetchEmployees = useCallback(async () => {
+    try {
+      const data = await getFunction<{ employees: { id: string; full_name: string | null; email: string }[] }>('users/employees');
+      setEmployees(data.employees || []);
+    } catch (err) {
+      console.error('Error fetching employees:', err);
+    }
+  }, []);
+
+  const fetchHourlyRate = useCallback(async () => {
+    try {
+      const data = await getFunction<Record<string, any>>('get-configuration');
+      const rate = parseFloat(data.config?.storeAssistantWageByHour || '5000');
+      setHourlyRate(rate);
+    } catch (err) {
+      console.error('Error fetching hourly rate:', err);
+    }
+  }, []);
+
   useEffect(() => {
     const dialogJustOpened = showAddExpenseDialog && !prevDialogOpenRef.current;
     prevDialogOpenRef.current = showAddExpenseDialog;
     if (dialogJustOpened && !categoriesLoading) {
       fetchCategories();
+      fetchEmployees();
+      fetchHourlyRate();
     }
-  }, [showAddExpenseDialog, categoriesLoading, fetchCategories]);
+  }, [showAddExpenseDialog, categoriesLoading, fetchCategories, fetchEmployees, fetchHourlyRate]);
+
+  useEffect(() => {
+    if (expenseType === 'payroll' && appUser?.role === 'employee') {
+      setSelectedEmployeeId(appUser.id);
+      setEmployeeName(appUser.full_name ?? '');
+    } else if (expenseType === 'payroll') {
+      setSelectedEmployeeId('');
+      setEmployeeName('');
+    }
+  }, [expenseType, appUser?.id, appUser?.role, appUser?.full_name]);
 
   const resetDialog = useCallback(() => {
     setExpenseDate(format(new Date(), 'yyyy-MM-dd'));
@@ -72,6 +120,13 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
     setCategoryId('');
     setPaymentMethodId('');
     setDescription('');
+    setExpenseType('expense');
+    setPayrollSchedule('daily');
+    setSelectedEmployeeId('');
+    setEmployeeName('');
+    setShiftStart('');
+    setShiftEnd('');
+    setWeeklyHours('');
   }, []);
 
   const createCategory = useCallback(async (supplierName: string, category: string): Promise<TransactionCategory | null> => {
@@ -107,12 +162,75 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
   };
 
   const handleSubmitExpense = async () => {
-    if (!categoryId) {
-      toast.error('Please select a category');
-      return;
-    }
     if (!paymentMethodId) {
       toast.error('Please select a payment method');
+      return;
+    }
+
+    if (expenseType === 'payroll') {
+      const name = selectedEmployeeId
+        ? (employees.find((e) => e.id === selectedEmployeeId)?.full_name ?? '').trim()
+        : employeeName.trim();
+      if (!name) {
+        toast.error('Please select an employee');
+        return;
+      }
+
+      let hoursWorked: number;
+      if (payrollSchedule === 'daily') {
+        if (!shiftStart || !shiftEnd) {
+          toast.error('Please enter shift start and end times');
+          return;
+        }
+        const [sh, sm] = shiftStart.split(':').map(Number);
+        const [eh, em] = shiftEnd.split(':').map(Number);
+        let durationMin = (eh * 60 + em) - (sh * 60 + sm);
+        if (durationMin <= 0) durationMin += 24 * 60;
+        if (durationMin > 12 * 60) {
+          toast.error('Shift duration cannot exceed 12 hours');
+          return;
+        }
+        hoursWorked = Math.round((durationMin / 60) * 100) / 100;
+      } else {
+        const hours = parseFloat(weeklyHours);
+        if (!weeklyHours || isNaN(hours) || hours <= 0) {
+          toast.error('Please enter valid hours worked');
+          return;
+        }
+        if ((hours * 2) % 1 !== 0) {
+          toast.error('Hours must be in 0.5 increments (e.g. 8, 8.5, 37.5)');
+          return;
+        }
+        hoursWorked = hours;
+      }
+
+      setSubmitting(true);
+      try {
+        await postFunction('dashboard/expense', {
+          expense_type: 'payroll',
+          employee_name: name,
+          hours_worked: hoursWorked,
+          payroll_schedule: payrollSchedule,
+          payment_method_id: paymentMethodId,
+          description: description.trim() || undefined,
+          expense_date: new Date(expenseDate + 'T12:00:00.000Z').toISOString(),
+        });
+        toast.success('Payroll expense added');
+        setShowAddExpenseDialog(false);
+        resetDialog();
+        await onExpenseAdded?.();
+      } catch (err) {
+        handleApiError(err, 'add payroll expense', 'Failed to add payroll expense');
+        toast.error(err instanceof Error ? err.message : 'Failed to add payroll expense');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    // Regular expense path
+    if (!categoryId) {
+      toast.error('Please select a category');
       return;
     }
     const amountNum = parseFloat(amount);
@@ -201,74 +319,281 @@ export function ExpensesTab({ metrics, filterLabel, paymentMethods, onExpenseAdd
             <DialogDescription>Record a manual expense. It will appear in the expenses list.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="expense-date">Date *</Label>
-              <Input
-                id="expense-date"
-                type="date"
-                value={expenseDate}
-                onChange={(e) => setExpenseDate(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Supplier *</Label>
-              <CategoryCombobox
-                categories={categories}
-                selectedId={categoryId}
-                onSelect={setCategoryId}
-                onAddNew={createCategory}
-                direction="out"
-                disabled={categoriesLoading}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Payment method *</Label>
-              <Select value={paymentMethodId || undefined} onValueChange={setPaymentMethodId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select payment method..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {paymentMethods
-                    .filter((pm) => pm.payment_user_enabled === 1)
-                    .map((pm) => (
-                      <SelectItem key={pm.id} value={pm.id}>
-                        {pm.payment_method}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="expense-amount">Amount *</Label>
-              <div className="relative">
-                <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            {/* Row 1: Date + Type toggle */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="expense-date">Date *</Label>
                 <Input
-                  id="expense-amount"
-                  type="number"
-                  step="1000"
-                  className="pl-8"
-                  placeholder="0"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  id="expense-date"
+                  type="date"
+                  className="mt-4 py-2"
+                  value={expenseDate}
+                  onChange={(e) => setExpenseDate(e.target.value)}
                 />
               </div>
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Type *</Label>
+                <div className="grid grid-cols-2 gap-2 p-1 bg-muted/50 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setExpenseType('expense')}
+                    className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all ${
+                      expenseType === 'expense'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Receipt className="w-4 h-4" />
+                    <span>Expense</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpenseType('payroll')}
+                    className={`flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-all ${
+                      expenseType === 'payroll'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Users className="w-4 h-4" />
+                    <span>Payroll</span>
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="expense-description">Description (optional)</Label>
-              <Textarea
-                id="expense-description"
-                placeholder="Details about this expense..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </div>
+
+            {expenseType === 'payroll' ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Employee *</Label>
+                    <Select
+                      value={selectedEmployeeId || undefined}
+                      onValueChange={(value) => {
+                        setSelectedEmployeeId(value);
+                        const emp = employees.find((e) => e.id === value);
+                        setEmployeeName(emp?.full_name ?? '');
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select employee..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {employees.map((emp) => (
+                          <SelectItem key={emp.id} value={emp.id}>
+                            {emp.full_name || emp.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Payment schedule *</Label>
+                    <Select
+                      value={payrollSchedule}
+                      onValueChange={(value: 'daily' | 'weekly') => setPayrollSchedule(value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="daily">Daily</SelectItem>
+                        <SelectItem value="weekly">Weekly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {payrollSchedule === 'daily' ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="payroll-shift-start">Shift Start *</Label>
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-muted/50 text-muted-foreground">
+                            <LogIn className="h-4 w-4" aria-hidden />
+                          </div>
+                          <TimePicker
+                            id="payroll-shift-start"
+                            value={shiftStart}
+                            onChange={setShiftStart}
+                            aria-label="Shift start"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="payroll-shift-end">Shift End *</Label>
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-muted/50 text-muted-foreground">
+                            <LogOut className="h-4 w-4" aria-hidden />
+                          </div>
+                          <TimePicker
+                            id="payroll-shift-end"
+                            value={shiftEnd}
+                            onChange={setShiftEnd}
+                            aria-label="Shift end"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Max 12 hours. Overnight shifts are supported.</p>
+
+                    {shiftStart && shiftEnd && (() => {
+                      const [sh, sm] = shiftStart.split(':').map(Number);
+                      const [eh, em] = shiftEnd.split(':').map(Number);
+                      let durationMin = (eh * 60 + em) - (sh * 60 + sm);
+                      if (durationMin <= 0) durationMin += 24 * 60;
+                      if (durationMin > 12 * 60) return null;
+                      const hours = Math.round((durationMin / 60) * 100) / 100;
+                      const total = hours * hourlyRate;
+                      return (
+                        <div className="bg-muted/50 rounded-lg p-3 border space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Hours</span>
+                            <span className="font-medium">{hours}h</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Rate</span>
+                            <span className="font-medium">${formatCurrency(hourlyRate)}/hr</span>
+                          </div>
+                          <div className="flex justify-between text-sm pt-1 border-t">
+                            <span className="font-medium">Total</span>
+                            <span className="font-bold text-red-600">${formatCurrency(total)}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="payroll-weekly-hours">Hours worked *</Label>
+                      <Input
+                        id="payroll-weekly-hours"
+                        type="number"
+                        step="0.5"
+                        min="0.5"
+                        placeholder="e.g. 40"
+                        value={weeklyHours}
+                        onChange={(e) => setWeeklyHours(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">Use 0.5 increments (e.g. 8, 8.5, 37.5)</p>
+                    </div>
+
+                    {weeklyHours && parseFloat(weeklyHours) > 0 && (parseFloat(weeklyHours) * 2) % 1 === 0 && (() => {
+                      const hours = parseFloat(weeklyHours);
+                      const total = hours * hourlyRate;
+                      return (
+                        <div className="bg-muted/50 rounded-lg p-3 border space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Hours</span>
+                            <span className="font-medium">{hours}h</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Rate</span>
+                            <span className="font-medium">${formatCurrency(hourlyRate)}/hr</span>
+                          </div>
+                          <div className="flex justify-between text-sm pt-1 border-t">
+                            <span className="font-medium">Total</span>
+                            <span className="font-bold text-red-600">${formatCurrency(total)}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
+
+                <div className="space-y-2">
+                  <Label>Payment method *</Label>
+                  <Select value={paymentMethodId || undefined} onValueChange={setPaymentMethodId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select payment method..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {paymentMethods
+                        .filter((pm) => pm.payment_user_enabled === 1)
+                        .map((pm) => (
+                          <SelectItem key={pm.id} value={pm.id}>
+                            {pm.payment_method}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="expense-description">Description (optional)</Label>
+                  <Textarea
+                    id="expense-description"
+                    placeholder="Additional notes..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label>Supplier *</Label>
+                  <CategoryCombobox
+                    categories={categories}
+                    selectedId={categoryId}
+                    onSelect={setCategoryId}
+                    onAddNew={createCategory}
+                    direction="out"
+                    disabled={categoriesLoading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Payment method *</Label>
+                  <Select value={paymentMethodId || undefined} onValueChange={setPaymentMethodId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select payment method..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {paymentMethods
+                        .filter((pm) => pm.payment_user_enabled === 1)
+                        .map((pm) => (
+                          <SelectItem key={pm.id} value={pm.id}>
+                            {pm.payment_method}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="expense-amount">Amount *</Label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="expense-amount"
+                      type="number"
+                      step="1000"
+                      className="pl-8"
+                      placeholder="0"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="expense-description">Description (optional)</Label>
+                  <Textarea
+                    id="expense-description"
+                    placeholder="Details about this expense..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddExpenseDialog(false)}>
               Cancel
             </Button>
             <Button onClick={handleSubmitExpense} disabled={submitting}>
-              {submitting ? 'Adding...' : 'Add expense'}
+              {submitting ? 'Adding...' : expenseType === 'payroll' ? 'Add payroll' : 'Add expense'}
             </Button>
           </DialogFooter>
         </DialogContent>

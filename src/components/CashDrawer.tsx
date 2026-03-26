@@ -162,6 +162,10 @@ export function CashDrawer() {
         shiftEnd={drawer.shiftEnd}
         setShiftEnd={drawer.setShiftEnd}
         hourlyRate={drawer.hourlyRate}
+        payrollSchedule={drawer.payrollSchedule}
+        setPayrollSchedule={drawer.setPayrollSchedule}
+        weeklyHours={drawer.weeklyHours}
+        setWeeklyHours={drawer.setWeeklyHours}
         createCategory={drawer.createCategory}
         resetTransactionDialog={drawer.resetTransactionDialog}
         showEditOpeningCashDialog={drawer.showEditOpeningCashDialog}

@@ -44,7 +44,9 @@ export function getNotesDisplay(t: DrawerTransaction) {
     return t.notes || '-';
   }
   if (t.cashOutType === 'payroll' && t.hoursWorked != null && t.hourlyRate != null) {
-    return `${t.hoursWorked}h × $${formatCurrency(t.hourlyRate)}/hr`;
+    const isWeekly = !t.shiftStart && !t.shiftEnd;
+    const prefix = isWeekly ? 'Weekly: ' : '';
+    return `${prefix}${t.hoursWorked}h × $${formatCurrency(t.hourlyRate)}/hr`;
   }
   if (t.categoryName && t.description) {
     return t.description;

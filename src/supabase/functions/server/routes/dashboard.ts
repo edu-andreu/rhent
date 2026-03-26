@@ -234,6 +234,10 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
           amount,
           expense_date,
           description,
+          employee_name,
+          hours_worked,
+          hourly_rate,
+          payroll_schedule,
           drawer_transaction_categories (
             name,
             category
@@ -249,10 +253,18 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
       if (!expensesError && expensesRows && expensesRows.length > 0) {
         for (const row of expensesRows) {
           const amount = Math.abs(Math.round(parseFloat((row as any).amount) || 0));
-          const cat = (row as any).drawer_transaction_categories;
-          const catCol = cat?.category;
-          const category = (catCol && String(catCol).trim() !== "") ? String(catCol).trim() : (cat?.name || "Other");
-          const categoryName = cat?.name || category;
+          const isPayroll = !!(row as any).employee_name;
+          let category: string;
+          let categoryName: string;
+          if (isPayroll) {
+            category = "Payroll";
+            categoryName = "Payroll";
+          } else {
+            const cat = (row as any).drawer_transaction_categories;
+            const catCol = cat?.category;
+            category = (catCol && String(catCol).trim() !== "") ? String(catCol).trim() : (cat?.name || "Other");
+            categoryName = cat?.name || category;
+          }
           const paymentMethod = (row as any).payments_methods?.payment_method || "Other";
           cashTransactions.push({
             id: (row as any).id,
@@ -275,12 +287,96 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
     }
   });
 
-  // POST /dashboard/expense - Create a manual expense (stored in expenses table, shown in Expenses tab)
+  // POST /dashboard/expense - Create a manual expense or payroll entry (stored in expenses table)
   app.post("/make-server-918f1e54/dashboard/expense", async (c) => {
     try {
       const body = await c.req.json();
-      const { amount, category_id, payment_method_id, description, expense_date } = body;
+      const {
+        amount, category_id, payment_method_id, description, expense_date,
+        expense_type, employee_name, hours_worked, payroll_schedule,
+      } = body;
 
+      // Payment method required for both expense and payroll
+      if (!payment_method_id || typeof payment_method_id !== "string") {
+        return c.json({ error: "Payment method is required" }, 400);
+      }
+      const { data: methodRow, error: methodError } = await supabase
+        .from("payments_methods")
+        .select("id")
+        .eq("id", payment_method_id)
+        .single();
+      if (methodError || !methodRow) {
+        return c.json({ error: "Invalid payment method" }, 400);
+      }
+
+      const descriptionVal =
+        description != null && typeof description === "string" && description.trim() !== ""
+          ? description.trim()
+          : null;
+
+      const expenseDateVal =
+        expense_date != null && typeof expense_date === "string" && expense_date.trim() !== ""
+          ? new Date(expense_date).toISOString()
+          : new Date().toISOString();
+
+      // Payroll path
+      if (expense_type === "payroll") {
+        if (!employee_name || typeof employee_name !== "string" || employee_name.trim() === "") {
+          return c.json({ error: "Employee name is required for payroll" }, 400);
+        }
+        if (payroll_schedule !== "daily" && payroll_schedule !== "weekly") {
+          return c.json({ error: "Payment schedule must be 'daily' or 'weekly'" }, 400);
+        }
+        if (hours_worked === undefined || hours_worked === null) {
+          return c.json({ error: "Hours worked is required for payroll" }, 400);
+        }
+        const h = parseFloat(hours_worked);
+        if (isNaN(h) || h <= 0) {
+          return c.json({ error: "Hours worked must be a positive number" }, 400);
+        }
+        if ((h * 2) % 1 !== 0) {
+          return c.json({ error: "Hours must be in 0.5 increments (e.g. 8, 8.5, 37.5)" }, 400);
+        }
+
+        // Fetch hourly rate from configuration
+        const { data: wageKv } = await supabase
+          .from("kv_store_918f1e54")
+          .select("value")
+          .eq("key", "config_storeAssistant_wageByHour")
+          .single();
+        const hourlyRate = parseFloat(wageKv?.value || "5000");
+        const payrollAmount = h * hourlyRate;
+
+        const descParts = [`Payroll: ${employee_name.trim()}`];
+        if (payroll_schedule === "weekly") descParts.push("Weekly");
+        if (descriptionVal) descParts.push(descriptionVal);
+
+        const { data: expense, error: insertError } = await supabase
+          .from("expenses")
+          .insert({
+            amount: payrollAmount,
+            expense_date: expenseDateVal,
+            category_id: category_id || null,
+            payment_method_id,
+            description: descParts.join(" - "),
+            employee_name: employee_name.trim(),
+            hours_worked: h,
+            hourly_rate: hourlyRate,
+            payroll_schedule,
+          })
+          .select("id, amount, expense_date, category_id, payment_method_id, description, employee_name, hours_worked, hourly_rate, payroll_schedule")
+          .single();
+
+        if (insertError) {
+          console.log("Error creating payroll expense:", insertError);
+          return c.json({ error: `Failed to create payroll expense: ${insertError.message}` }, 500);
+        }
+
+        console.log(`✅ Payroll expense created (${payroll_schedule}): ${employee_name.trim()} ${h}h × $${hourlyRate} = $${payrollAmount}`);
+        return c.json(expense, 201);
+      }
+
+      // Regular expense path
       if (amount === undefined || amount === null) {
         return c.json({ error: "Amount is required" }, 400);
       }
@@ -303,28 +399,6 @@ export function registerDashboardRoutes(app: Hono, supabase: SupabaseClient) {
       if ((categoryRow as any).direction !== "out") {
         return c.json({ error: "Category must be an expense (out) category" }, 400);
       }
-
-      if (!payment_method_id || typeof payment_method_id !== "string") {
-        return c.json({ error: "Payment method is required" }, 400);
-      }
-      const { data: methodRow, error: methodError } = await supabase
-        .from("payments_methods")
-        .select("id")
-        .eq("id", payment_method_id)
-        .single();
-      if (methodError || !methodRow) {
-        return c.json({ error: "Invalid payment method" }, 400);
-      }
-
-      const descriptionVal =
-        description != null && typeof description === "string" && description.trim() !== ""
-          ? description.trim()
-          : null;
-
-      const expenseDateVal =
-        expense_date != null && typeof expense_date === "string" && expense_date.trim() !== ""
-          ? new Date(expense_date).toISOString()
-          : new Date().toISOString();
 
       const { data: expense, error: insertError } = await supabase
         .from("expenses")

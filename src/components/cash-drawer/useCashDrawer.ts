@@ -171,6 +171,8 @@ export function useCashDrawer() {
   const [shiftStart, setShiftStart] = useState('');
   const [shiftEnd, setShiftEnd] = useState('');
   const [hourlyRate, setHourlyRate] = useState(5000);
+  const [payrollSchedule, setPayrollSchedule] = useState<'daily' | 'weekly'>('daily');
+  const [weeklyHours, setWeeklyHours] = useState('');
 
   const { appUser } = useAuth();
 
@@ -414,32 +416,77 @@ export function useCashDrawer() {
         showAlert("Missing Information", "Please select an employee");
         return;
       }
-      if (!shiftStart || !shiftEnd) {
-        showAlert("Missing Information", "Please enter shift start and end times");
-        return;
-      }
 
-      const today = new Date().toISOString().split('T')[0];
-      const startISO = new Date(`${today}T${shiftStart}`).toISOString();
-      const endISO = new Date(`${today}T${shiftEnd}`).toISOString();
+      if (payrollSchedule === 'daily') {
+        if (!shiftStart || !shiftEnd) {
+          showAlert("Missing Information", "Please enter shift start and end times");
+          return;
+        }
+        const [sh, sm] = shiftStart.split(':').map(Number);
+        const [eh, em] = shiftEnd.split(':').map(Number);
+        let durationMin = (eh * 60 + em) - (sh * 60 + sm);
+        if (durationMin <= 0) durationMin += 24 * 60;
+        if (durationMin > 12 * 60) {
+          showAlert("Invalid Shift", "Shift duration cannot exceed 12 hours");
+          return;
+        }
 
-      setLoading(true);
-      try {
-        await postFunction("drawer/transaction", {
-          cash_out_type: 'payroll',
-          employee_name: name,
-          shift_start: startISO,
-          shift_end: endISO,
-          notes: transactionNotes || undefined,
-        });
+        const today = new Date().toISOString().split('T')[0];
+        const startISO = new Date(`${today}T${shiftStart}`).toISOString();
+        let endDate = today;
+        if ((eh * 60 + em) <= (sh * 60 + sm)) {
+          const next = new Date(`${today}T00:00`);
+          next.setDate(next.getDate() + 1);
+          endDate = next.toISOString().split('T')[0];
+        }
+        const endISO = new Date(`${endDate}T${shiftEnd}`).toISOString();
 
-        resetTransactionDialog();
-        await fetchCurrentDrawer();
-      } catch (err) {
-        handleApiError(err, "payroll transaction", "Failed to add payroll transaction");
-        showAlert("Error", err instanceof Error ? err.message : "Failed to add payroll transaction");
-      } finally {
-        setLoading(false);
+        setLoading(true);
+        try {
+          await postFunction("drawer/transaction", {
+            cash_out_type: 'payroll',
+            payroll_schedule: 'daily',
+            employee_name: name,
+            shift_start: startISO,
+            shift_end: endISO,
+            notes: transactionNotes || undefined,
+          });
+          resetTransactionDialog();
+          await fetchCurrentDrawer();
+        } catch (err) {
+          handleApiError(err, "payroll transaction", "Failed to add payroll transaction");
+          showAlert("Error", err instanceof Error ? err.message : "Failed to add payroll transaction");
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        const hours = parseFloat(weeklyHours);
+        if (!weeklyHours || isNaN(hours) || hours <= 0) {
+          showAlert("Missing Information", "Please enter valid hours worked");
+          return;
+        }
+        if ((hours * 2) % 1 !== 0) {
+          showAlert("Invalid Hours", "Hours must be in 0.5 increments (e.g. 8, 8.5, 37.5)");
+          return;
+        }
+
+        setLoading(true);
+        try {
+          await postFunction("drawer/transaction", {
+            cash_out_type: 'payroll',
+            payroll_schedule: 'weekly',
+            employee_name: name,
+            hours_worked: hours,
+            notes: transactionNotes || undefined,
+          });
+          resetTransactionDialog();
+          await fetchCurrentDrawer();
+        } catch (err) {
+          handleApiError(err, "payroll transaction", "Failed to add payroll transaction");
+          showAlert("Error", err instanceof Error ? err.message : "Failed to add payroll transaction");
+        } finally {
+          setLoading(false);
+        }
       }
       return;
     }
@@ -495,6 +542,8 @@ export function useCashDrawer() {
     setSelectedEmployeeId('');
     setShiftStart('');
     setShiftEnd('');
+    setPayrollSchedule('daily');
+    setWeeklyHours('');
   };
 
   const handleEditOpeningCash = async () => {
@@ -661,6 +710,10 @@ export function useCashDrawer() {
     shiftEnd,
     setShiftEnd,
     hourlyRate,
+    payrollSchedule,
+    setPayrollSchedule,
+    weeklyHours,
+    setWeeklyHours,
     fetchCategories,
     createCategory,
     resetTransactionDialog,

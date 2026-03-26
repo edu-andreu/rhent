@@ -58,6 +58,10 @@ interface CashDrawerDialogsProps {
   shiftEnd: string;
   setShiftEnd: (time: string) => void;
   hourlyRate: number;
+  payrollSchedule: 'daily' | 'weekly';
+  setPayrollSchedule: (schedule: 'daily' | 'weekly') => void;
+  weeklyHours: string;
+  setWeeklyHours: (hours: string) => void;
   createCategory: (name: string, category: string, direction: 'in' | 'out') => Promise<TransactionCategory | null>;
   resetTransactionDialog: () => void;
 
@@ -134,6 +138,10 @@ export function CashDrawerDialogs({
   shiftEnd,
   setShiftEnd,
   hourlyRate,
+  payrollSchedule,
+  setPayrollSchedule,
+  weeklyHours,
+  setWeeklyHours,
   createCategory,
   resetTransactionDialog,
   showEditOpeningCashDialog,
@@ -371,82 +379,144 @@ export function CashDrawerDialogs({
               </>
             ) : transactionType === 'out' && cashOutType === 'payroll' ? (
               <>
-                <div className="space-y-2">
-                  <Label>Employee *</Label>
-                  <Select
-                    value={selectedEmployeeId || undefined}
-                    onValueChange={(value) => {
-                      setSelectedEmployeeId(value);
-                      const emp = employees.find((e) => e.id === value);
-                      setEmployeeName(emp?.full_name ?? '');
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select employee..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {employees.map((emp) => (
-                        <SelectItem key={emp.id} value={emp.id}>
-                          {emp.full_name || emp.email}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label htmlFor="shiftStart">Shift Start *</Label>
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-muted/50 text-muted-foreground">
-                        <LogIn className="h-4 w-4" aria-hidden />
-                      </div>
-                      <TimePicker
-                        id="shiftStart"
-                        value={shiftStart}
-                        onChange={setShiftStart}
-                        aria-label="Shift start"
-                      />
-                    </div>
+                    <Label>Employee *</Label>
+                    <Select
+                      value={selectedEmployeeId || undefined}
+                      onValueChange={(value) => {
+                        setSelectedEmployeeId(value);
+                        const emp = employees.find((e) => e.id === value);
+                        setEmployeeName(emp?.full_name ?? '');
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select employee..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {employees.map((emp) => (
+                          <SelectItem key={emp.id} value={emp.id}>
+                            {emp.full_name || emp.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="shiftEnd">Shift End *</Label>
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-muted/50 text-muted-foreground">
-                        <LogOut className="h-4 w-4" aria-hidden />
-                      </div>
-                      <TimePicker
-                        id="shiftEnd"
-                        value={shiftEnd}
-                        onChange={setShiftEnd}
-                        aria-label="Shift end"
-                      />
-                    </div>
+                    <Label>Payment schedule *</Label>
+                    <Select
+                      value={payrollSchedule}
+                      onValueChange={(value: 'daily' | 'weekly') => setPayrollSchedule(value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="daily">Daily</SelectItem>
+                        <SelectItem value="weekly">Weekly</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
-                {shiftStart && shiftEnd && shiftEnd > shiftStart && (() => {
-                  const [sh, sm] = shiftStart.split(':').map(Number);
-                  const [eh, em] = shiftEnd.split(':').map(Number);
-                  const hours = Math.round(((eh * 60 + em) - (sh * 60 + sm)) / 60 * 100) / 100;
-                  const total = hours * hourlyRate;
-                  return (
-                    <div className="bg-muted/50 rounded-lg p-3 border space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Hours</span>
-                        <span className="font-medium">{hours}h</span>
+                {payrollSchedule === 'daily' ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="shiftStart">Shift Start *</Label>
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-muted/50 text-muted-foreground">
+                            <LogIn className="h-4 w-4" aria-hidden />
+                          </div>
+                          <TimePicker
+                            id="shiftStart"
+                            value={shiftStart}
+                            onChange={setShiftStart}
+                            aria-label="Shift start"
+                          />
+                        </div>
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Rate</span>
-                        <span className="font-medium">${formatCurrency(hourlyRate)}/hr</span>
-                      </div>
-                      <div className="flex justify-between text-sm pt-1 border-t">
-                        <span className="font-medium">Total</span>
-                        <span className="font-bold text-red-600">${formatCurrency(total)}</span>
+                      <div className="space-y-2">
+                        <Label htmlFor="shiftEnd">Shift End *</Label>
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-input bg-muted/50 text-muted-foreground">
+                            <LogOut className="h-4 w-4" aria-hidden />
+                          </div>
+                          <TimePicker
+                            id="shiftEnd"
+                            value={shiftEnd}
+                            onChange={setShiftEnd}
+                            aria-label="Shift end"
+                          />
+                        </div>
                       </div>
                     </div>
-                  );
-                })()}
+                    <p className="text-xs text-muted-foreground">Max 12 hours. Overnight shifts are supported.</p>
+
+                    {shiftStart && shiftEnd && (() => {
+                      const [sh, sm] = shiftStart.split(':').map(Number);
+                      const [eh, em] = shiftEnd.split(':').map(Number);
+                      let durationMin = (eh * 60 + em) - (sh * 60 + sm);
+                      if (durationMin <= 0) durationMin += 24 * 60;
+                      if (durationMin > 12 * 60) return null;
+                      const hours = Math.round((durationMin / 60) * 100) / 100;
+                      const total = hours * hourlyRate;
+                      return (
+                        <div className="bg-muted/50 rounded-lg p-3 border space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Hours</span>
+                            <span className="font-medium">{hours}h</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Rate</span>
+                            <span className="font-medium">${formatCurrency(hourlyRate)}/hr</span>
+                          </div>
+                          <div className="flex justify-between text-sm pt-1 border-t">
+                            <span className="font-medium">Total</span>
+                            <span className="font-bold text-red-600">${formatCurrency(total)}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="weeklyHours">Hours worked *</Label>
+                      <Input
+                        id="weeklyHours"
+                        type="number"
+                        step="0.5"
+                        min="0.5"
+                        placeholder="e.g. 40"
+                        value={weeklyHours}
+                        onChange={(e) => setWeeklyHours(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">Use 0.5 increments (e.g. 8, 8.5, 37.5)</p>
+                    </div>
+
+                    {weeklyHours && parseFloat(weeklyHours) > 0 && (parseFloat(weeklyHours) * 2) % 1 === 0 && (() => {
+                      const hours = parseFloat(weeklyHours);
+                      const total = hours * hourlyRate;
+                      return (
+                        <div className="bg-muted/50 rounded-lg p-3 border space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Hours</span>
+                            <span className="font-medium">{hours}h</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Rate</span>
+                            <span className="font-medium">${formatCurrency(hourlyRate)}/hr</span>
+                          </div>
+                          <div className="flex justify-between text-sm pt-1 border-t">
+                            <span className="font-medium">Total</span>
+                            <span className="font-bold text-red-600">${formatCurrency(total)}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="transactionNotes">Description (optional)</Label>

@@ -912,7 +912,7 @@ app.delete("/make-server-918f1e54/drawer/categories/:id", async (c) => {
 app.post("/make-server-918f1e54/drawer/transaction", async (c) => {
   try {
     const body = await c.req.json();
-    const { amount, category, notes, category_id, cash_out_type, employee_name, shift_start, shift_end } = body;
+    const { amount, category, notes, category_id, cash_out_type, employee_name, shift_start, shift_end, payroll_schedule, hours_worked: body_hours_worked } = body;
     const currentUser = getCurrentUserDisplay(c);
 
     // Get current open drawer
@@ -932,25 +932,47 @@ app.post("/make-server-918f1e54/drawer/transaction", async (c) => {
       categoryName = cat?.name || null;
     }
 
-    // Payroll transaction: compute amount from shift times and hourly wage
+    // Payroll transaction: compute amount from shift times or manual hours and hourly wage
     if (cash_out_type === "payroll") {
-      if (!shift_start || !shift_end) {
-        return c.json({ error: "Shift start and end times are required for payroll" }, 400);
-      }
       if (!employee_name || employee_name.trim() === "") {
         return c.json({ error: "Employee name is required for payroll" }, 400);
       }
 
-      const start = new Date(shift_start);
-      const end = new Date(shift_end);
-      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-        return c.json({ error: "Invalid shift start or end time" }, 400);
-      }
-      if (end <= start) {
-        return c.json({ error: "Shift end must be after shift start" }, 400);
-      }
+      const schedule = payroll_schedule || "daily";
+      let hoursWorked: number;
+      let startISO: string | null = null;
+      let endISO: string | null = null;
 
-      const hoursWorked = Math.round(((end.getTime() - start.getTime()) / 3600000) * 100) / 100;
+      if (schedule === "weekly") {
+        if (body_hours_worked === undefined || body_hours_worked === null) {
+          return c.json({ error: "Hours worked is required for weekly payroll" }, 400);
+        }
+        const h = parseFloat(body_hours_worked);
+        if (isNaN(h) || h <= 0) {
+          return c.json({ error: "Hours worked must be a positive number" }, 400);
+        }
+        if ((h * 2) % 1 !== 0) {
+          return c.json({ error: "Hours must be in 0.5 increments (e.g. 8, 8.5, 37.5)" }, 400);
+        }
+        hoursWorked = h;
+      } else {
+        if (!shift_start || !shift_end) {
+          return c.json({ error: "Shift start and end times are required for daily payroll" }, 400);
+        }
+        const start = new Date(shift_start);
+        const end = new Date(shift_end);
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+          return c.json({ error: "Invalid shift start or end time" }, 400);
+        }
+        let diffMs = end.getTime() - start.getTime();
+        if (diffMs <= 0) diffMs += 24 * 60 * 60 * 1000;
+        if (diffMs > 12 * 60 * 60 * 1000) {
+          return c.json({ error: "Shift duration cannot exceed 12 hours" }, 400);
+        }
+        hoursWorked = Math.round((diffMs / 3600000) * 100) / 100;
+        startISO = start.toISOString();
+        endISO = end.toISOString();
+      }
 
       // Fetch hourly rate from configuration
       const { data: wageKv } = await supabase
@@ -963,6 +985,7 @@ app.post("/make-server-918f1e54/drawer/transaction", async (c) => {
       const payrollAmount = -(hoursWorked * hourlyRate);
 
       const descParts = [`Payroll: ${employee_name.trim()}`];
+      if (schedule === "weekly") descParts.push("Weekly");
       if (notes && notes.trim()) descParts.push(notes.trim());
 
       const { data: transaction, error: txnError } = await supabase
@@ -980,8 +1003,8 @@ app.post("/make-server-918f1e54/drawer/transaction", async (c) => {
           category_id: null,
           cash_out_type: "payroll",
           employee_name: employee_name.trim(),
-          shift_start: start.toISOString(),
-          shift_end: end.toISOString(),
+          shift_start: startISO,
+          shift_end: endISO,
           hours_worked: hoursWorked,
           hourly_rate: hourlyRate,
         })
@@ -993,7 +1016,7 @@ app.post("/make-server-918f1e54/drawer/transaction", async (c) => {
         return c.json({ error: `Failed to create transaction: ${txnError.message}` }, 500);
       }
 
-      console.log(`✅ Payroll transaction created: ${employee_name.trim()} ${hoursWorked}h × $${hourlyRate} = $${Math.abs(payrollAmount)}`);
+      console.log(`✅ Payroll transaction created (${schedule}): ${employee_name.trim()} ${hoursWorked}h × $${hourlyRate} = $${Math.abs(payrollAmount)}`);
       return c.json({ transaction }, 201);
     }
 
@@ -1161,7 +1184,7 @@ app.put("/make-server-918f1e54/drawer/transaction/:id", async (c) => {
   try {
     const transactionId = c.req.param("id");
     const body = await c.req.json();
-    const { amount, notes, category_id, cash_out_type, employee_name, shift_start, shift_end } = body;
+    const { amount, notes, category_id, cash_out_type, employee_name, shift_start, shift_end, payroll_schedule, hours_worked: body_hours_worked } = body;
 
     // Get current open drawer
     const openDrawer = await getCurrentOpenDrawer(supabase);
@@ -1248,20 +1271,45 @@ app.put("/make-server-918f1e54/drawer/transaction/:id", async (c) => {
 
     // Handle payroll edit
     if (effectiveCashOutType === "payroll") {
-      const effectiveStart = shift_start || existingTxn.shift_start;
-      const effectiveEnd = shift_end || existingTxn.shift_end;
       const effectiveEmployee = employee_name !== undefined ? employee_name : existingTxn.employee_name;
-
-      if (!effectiveStart || !effectiveEnd) {
-        return c.json({ error: "Shift start and end times are required for payroll" }, 400);
-      }
       if (!effectiveEmployee || effectiveEmployee.trim() === "") {
         return c.json({ error: "Employee name is required for payroll" }, 400);
       }
 
-      const start = new Date(effectiveStart);
-      const end = new Date(effectiveEnd);
-      const hoursWorked = Math.round(((end.getTime() - start.getTime()) / 3600000) * 100) / 100;
+      const schedule = payroll_schedule || (existingTxn.shift_start ? "daily" : "weekly");
+      let hoursWorked: number;
+      let startISO: string | null = null;
+      let endISO: string | null = null;
+
+      if (schedule === "weekly") {
+        const h = body_hours_worked !== undefined ? parseFloat(body_hours_worked) : (existingTxn.hours_worked ? parseFloat(existingTxn.hours_worked) : NaN);
+        if (isNaN(h) || h <= 0) {
+          return c.json({ error: "Hours worked must be a positive number" }, 400);
+        }
+        if ((h * 2) % 1 !== 0) {
+          return c.json({ error: "Hours must be in 0.5 increments (e.g. 8, 8.5, 37.5)" }, 400);
+        }
+        hoursWorked = h;
+      } else {
+        const effectiveStart = shift_start || existingTxn.shift_start;
+        const effectiveEnd = shift_end || existingTxn.shift_end;
+        if (!effectiveStart || !effectiveEnd) {
+          return c.json({ error: "Shift start and end times are required for daily payroll" }, 400);
+        }
+        const start = new Date(effectiveStart);
+        const end = new Date(effectiveEnd);
+        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+          return c.json({ error: "Invalid shift start or end time" }, 400);
+        }
+        let diffMs = end.getTime() - start.getTime();
+        if (diffMs <= 0) diffMs += 24 * 60 * 60 * 1000;
+        if (diffMs > 12 * 60 * 60 * 1000) {
+          return c.json({ error: "Shift duration cannot exceed 12 hours" }, 400);
+        }
+        hoursWorked = Math.round((diffMs / 3600000) * 100) / 100;
+        startISO = start.toISOString();
+        endISO = end.toISOString();
+      }
 
       const { data: wageKv } = await supabase
         .from("kv_store_918f1e54")
@@ -1273,6 +1321,7 @@ app.put("/make-server-918f1e54/drawer/transaction/:id", async (c) => {
       const payrollAmount = -(hoursWorked * hourlyRate);
 
       const descParts = [`Payroll: ${effectiveEmployee.trim()}`];
+      if (schedule === "weekly") descParts.push("Weekly");
       if (notes && notes.trim()) descParts.push(notes.trim());
 
       const { data: updatedTxn, error: updateError } = await supabase
@@ -1283,8 +1332,8 @@ app.put("/make-server-918f1e54/drawer/transaction/:id", async (c) => {
           description: descParts.join(" - "),
           cash_out_type: "payroll",
           employee_name: effectiveEmployee.trim(),
-          shift_start: start.toISOString(),
-          shift_end: end.toISOString(),
+          shift_start: startISO,
+          shift_end: endISO,
           hours_worked: hoursWorked,
           hourly_rate: hourlyRate,
           category_id: null,
@@ -1298,7 +1347,7 @@ app.put("/make-server-918f1e54/drawer/transaction/:id", async (c) => {
         return c.json({ error: `Failed to update transaction: ${updateError.message}` }, 500);
       }
 
-      console.log(`✅ Payroll transaction ${transactionId} updated: ${effectiveEmployee} ${hoursWorked}h`);
+      console.log(`✅ Payroll transaction ${transactionId} updated (${schedule}): ${effectiveEmployee} ${hoursWorked}h`);
       return c.json({ transaction: updatedTxn });
     }
 
